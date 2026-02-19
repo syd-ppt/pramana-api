@@ -1,0 +1,7 @@
+# Exclude non-deployment files
+test_api_local.py
+test_deployment.py
+docs/
+*.md
+!README.md
+.claude/

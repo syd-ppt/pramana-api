@@ -1,0 +1,167 @@
+# ============================================================================
+# WARNING: NEVER COMMIT SECRETS, API KEYS, OR CREDENTIALS TO GIT
+# ============================================================================
+# If you accidentally commit secrets:
+#   1. Immediately rotate/regenerate the secrets
+#   2. Use: git filter-branch or BFG Repo-Cleaner to remove from history
+#   3. Force push to overwrite remote: git push --force origin main
+# ============================================================================
+
+# ============================================================================
+# SECRETS & CREDENTIALS (CRITICAL - NEVER COMMIT)
+# ============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+secrets/
+credentials/
+config/secrets.json
+oauth-credentials.json
+service-account*.json
+
+# Vercel
+.vercel
+.vercel.json
+
+# Local development secrets
+app/.env.local
+app/.env.development.local
+app/.env.production.local
+
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ============================================================================
+# Node.js / Next.js
+# ============================================================================
+app/.next/
+app/out/
+app/node_modules/
+app/.turbo
+app/.pnp
+app/.pnp.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# ============================================================================
+# IDE & Editors
+# ============================================================================
+.vscode/
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.history/
+CLAUDE.md
+
+# ============================================================================
+# Operating System
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# Logs
+# ============================================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ============================================================================
+# Testing
+# ============================================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage/
+*.cover
+.hypothesis/
+.nyc_output
+
+# ============================================================================
+# Data & Backups (may contain sensitive info)
+# ============================================================================
+*.parquet
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+backup/
+backups/
+dumps/
+*.dump
+*.bak
+*.backup
+*.old
+
+# ============================================================================
+# Temporary Files
+# ============================================================================
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+.next/
+
+# ============================================================================
+# Private (operator-specific docs, unused code)
+# ============================================================================
+.private/
+docs/NEXT_STEPS.md
