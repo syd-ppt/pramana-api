@@ -2,7 +2,7 @@
  * Statistical analysis utilities.
  */
 
-import { mean, standardDeviation, tTestTwoSample } from 'simple-statistics';
+import { mean, sampleStandardDeviation, standardDeviation, tTestTwoSample } from 'simple-statistics';
 
 export interface DegradationResult {
   isDegraded: boolean;
@@ -130,8 +130,8 @@ export function detectDegradation(
 
   const tStat = tTestTwoSample(recent, baseline, 0);
 
-  const s1 = standardDeviation(recent);
-  const s2 = standardDeviation(baseline);
+  const s1 = sampleStandardDeviation(recent);
+  const s2 = sampleStandardDeviation(baseline);
   const n1 = recent.length;
   const n2 = baseline.length;
   const v1 = (s1 * s1) / n1;

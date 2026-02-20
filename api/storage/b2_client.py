@@ -77,15 +77,18 @@ class B2Client:
 
         def list_and_delete():
             deleted = 0
-            scanned = 0
-            for file_version, _ in self.bucket.ls(recursive=True):
-                scanned += 1
-                if scanned > self.MAX_SCAN_FILES:
-                    logging.warning("GDPR deletion scan capped at %d files for user %s", self.MAX_SCAN_FILES, user_id)
+            while True:
+                batch_deleted = 0
+                for file_version, _ in self.bucket.ls(recursive=True):
+                    if f"/user={user_id}/" in file_version.file_name:
+                        self.api.delete_file_version(file_version.id_, file_version.file_name)
+                        deleted += 1
+                        batch_deleted += 1
+                        if batch_deleted >= self.MAX_SCAN_FILES:
+                            break
+                if batch_deleted < self.MAX_SCAN_FILES:
                     break
-                if f"/user={user_id}/" in file_version.file_name:
-                    self.api.delete_file_version(file_version.id_, file_version.file_name)
-                    deleted += 1
+                logging.info("GDPR deletion pass completed %d files for user %s, scanning for more", deleted, user_id)
             return deleted
 
         return await loop.run_in_executor(None, list_and_delete)
@@ -104,34 +107,32 @@ class B2Client:
 
         def copy_and_delete():
             moved = 0
-            scanned = 0
-            for file_version, _ in self.bucket.ls(recursive=True):
-                scanned += 1
-                if scanned > self.MAX_SCAN_FILES:
-                    logging.warning("GDPR deletion scan capped at %d files for user %s", self.MAX_SCAN_FILES, from_user_id)
+            while True:
+                batch_moved = 0
+                for file_version, _ in self.bucket.ls(recursive=True):
+                    if f"/user={from_user_id}/" not in file_version.file_name:
+                        continue
+
+                    download_dest = BytesIO()
+                    self.bucket.download_file_by_name(file_version.file_name).save(download_dest)
+
+                    old_path = file_version.file_name
+                    new_path = old_path.replace(f"user={from_user_id}/", f"user={to_user_id}/")
+
+                    download_dest.seek(0)
+                    self.bucket.upload_bytes(
+                        data_bytes=download_dest.read(),
+                        file_name=new_path,
+                    )
+
+                    self.api.delete_file_version(file_version.id_, file_version.file_name)
+                    moved += 1
+                    batch_moved += 1
+                    if batch_moved >= self.MAX_SCAN_FILES:
+                        break
+                if batch_moved < self.MAX_SCAN_FILES:
                     break
-                if f"/user={from_user_id}/" not in file_version.file_name:
-                    continue
-
-                # Read file content
-                download_dest = BytesIO()
-                self.bucket.download_file_by_name(file_version.file_name).save(download_dest)
-
-                # Create new key with different user partition
-                old_path = file_version.file_name
-                new_path = old_path.replace(f"user={from_user_id}/", f"user={to_user_id}/")
-
-                # Upload to new location
-                download_dest.seek(0)
-                self.bucket.upload_bytes(
-                    data_bytes=download_dest.read(),
-                    file_name=new_path,
-                )
-
-                # Delete old file
-                self.api.delete_file_version(file_version.id_, file_version.file_name)
-                moved += 1
-
+                logging.info("GDPR anonymization pass completed %d files for user %s, scanning for more", moved, from_user_id)
             return moved
 
         return await loop.run_in_executor(None, copy_and_delete)
