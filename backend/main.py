@@ -99,4 +99,36 @@ async def health():
     }
 
 
+@app.get("/api/debug/b2-list")
+async def debug_b2_list(prefix: str = "year=2026/month=02/day=13/"):
+    """Temporary debug: test B2 listing with a specific prefix."""
+    import asyncio
+    from backend.storage.b2_client import B2Client
+
+    loop = asyncio.get_running_loop()
+    client = await loop.run_in_executor(None, B2Client)
+
+    results: dict = {"prefix": prefix, "files": [], "error": None}
+    try:
+        for fv, _ in client.bucket.ls(folder_to_list=prefix, recursive=True):
+            results["files"].append(fv.file_name)
+            if len(results["files"]) >= 10:
+                break
+    except Exception as exc:
+        results["error"] = f"{type(exc).__name__}: {exc}"
+
+    # Also try without folder_to_list for comparison
+    results["raw_ls_sample"] = []
+    try:
+        for fv, _ in client.bucket.ls(recursive=True):
+            if fv.file_name.startswith(prefix):
+                results["raw_ls_sample"].append(fv.file_name)
+                if len(results["raw_ls_sample"]) >= 5:
+                    break
+    except Exception as exc:
+        results["raw_ls_error"] = f"{type(exc).__name__}: {exc}"
+
+    return results
+
+
 # Vercel will auto-detect the `app` export for FastAPI
