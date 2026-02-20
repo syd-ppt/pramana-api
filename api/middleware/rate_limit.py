@@ -1,21 +1,25 @@
 """IP-based rate limiting middleware."""
+from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Dict, List
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limit requests by IP address."""
+    """Rate limit requests by IP address.
+
+    Note: In serverless environments (Vercel), in-memory state resets on each cold start.
+    This middleware is effective only within a single function invocation lifetime.
+    """
 
     def __init__(self, app, max_requests: int = 60, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.requests: Dict[str, List[float]] = defaultdict(list)
+        self.requests: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
         """Check rate limit before processing request."""

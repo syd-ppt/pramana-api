@@ -1,7 +1,8 @@
 """Pydantic schemas for API."""
+from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -9,16 +10,16 @@ from pydantic import BaseModel, Field
 class SubmissionRequest(BaseModel):
     """Single test result submission."""
 
-    model_id: str
-    prompt_id: str
-    output: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    model_id: str = Field(max_length=256)
+    prompt_id: str = Field(max_length=256)
+    output: str = Field(max_length=1_048_576)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SubmissionResponse(BaseModel):
     """Response from submission endpoint."""
 
-    status: str  # "success" or "duplicate"
+    status: str  # "accepted" or "duplicate"
     id: str
     hash: str
 
@@ -30,6 +31,6 @@ class BatchSubmissionRequest(BaseModel):
     suite_hash: str
     model_id: str
     temperature: float
-    seed: Optional[int]
+    seed: int | None
     timestamp: datetime
-    results: List[SubmissionRequest]
+    results: list[SubmissionRequest] = Field(max_length=1000)
