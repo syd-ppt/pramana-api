@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Vercel zero-config FastAPI entrypoint paths (Rule 2)
 # https://vercel.com/docs/frameworks/backend/fastapi
 ZERO_CONFIG_ENTRYPOINTS = [
-    "app.py",
+    # "app.py" is intentionally used as our Vercel FastAPI entrypoint shim
     "index.py",
     "server.py",
     "src/app.py",
@@ -207,4 +207,39 @@ class TestNoStaleApiImports:
         assert not stale, (
             f"Found stale 'from api.' imports in tests/: {stale}. "
             "Update these to 'from backend.' after the api/ → backend/ rename."
+        )
+
+
+class TestVercelEntrypoint:
+    """app.py must exist as a thin re-export shim for Vercel FastAPI detection.
+
+    Vercel zero-config scans app.py for a FastAPI `app` object.
+    Our shim re-exports from backend.main — it must NOT define its own FastAPI().
+    """
+
+    def test_app_py_exists(self):
+        app_py = PROJECT_ROOT / "app.py"
+        assert app_py.exists(), (
+            "app.py missing at project root. Vercel pramana-eval-api needs this "
+            "as the FastAPI zero-config entrypoint. "
+            "Expected: `from backend.main import app  # noqa: F401`"
+        )
+
+    def test_app_py_is_reexport_only(self):
+        app_py = PROJECT_ROOT / "app.py"
+        if not app_py.exists():
+            pytest.skip("app.py does not exist")
+        content = app_py.read_text()
+        lines = [l for l in content.strip().splitlines() if l.strip() and not l.strip().startswith("#")]
+        assert len(lines) <= 3, (
+            f"app.py has {len(lines)} non-empty/non-comment lines (expected ≤3). "
+            "It should be a thin re-export shim, not a full app definition."
+        )
+        assert "from backend.main import app" in content, (
+            "app.py must contain `from backend.main import app`. "
+            "It re-exports the FastAPI instance for Vercel zero-config detection."
+        )
+        assert "FastAPI(" not in content, (
+            "app.py must NOT define its own FastAPI() instance. "
+            "It should only re-export from backend.main."
         )
