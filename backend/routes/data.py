@@ -41,12 +41,9 @@ def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
     current = start
     while current <= end:
         prefix = f"year={current.year}/month={current.month:02d}/day={current.day:02d}/"
-        try:
-            for file_version, _ in bucket.ls(folder_to_list=prefix, recursive=True):
-                if file_version.file_name.endswith(".parquet"):
-                    matching_files.append(file_version.file_name)
-        except Exception:
-            logger.debug("No files for prefix %s", prefix)
+        for file_version, _ in bucket.ls(folder_to_list=prefix, recursive=True):
+            if file_version.file_name.endswith(".parquet"):
+                matching_files.append(file_version.file_name)
         current += timedelta(days=1)
 
     if not matching_files:

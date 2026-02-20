@@ -109,93 +109,77 @@ def validate_token(authorization: str | None) -> str | None:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
 
-async def write_to_b2(record: dict) -> str:
-    """Write a single record to B2 as Parquet file.
+_PARQUET_SCHEMA = None
 
-    Serverless-friendly: creates B2 client per request, writes immediately.
-    Returns the B2 file key.
+
+def _get_schema():
+    global _PARQUET_SCHEMA
+    if _PARQUET_SCHEMA is None:
+        import pyarrow as pa
+        _PARQUET_SCHEMA = pa.schema([
+            ("id", pa.string()),
+            ("timestamp", pa.timestamp("us")),
+            ("user_id", pa.string()),
+            ("model_id", pa.string()),
+            ("prompt_id", pa.string()),
+            ("output", pa.string()),
+            ("output_hash", pa.string()),
+            ("metadata_json", pa.string()),
+            ("year", pa.int32()),
+            ("month", pa.int32()),
+            ("day", pa.int32()),
+        ])
+    return _PARQUET_SCHEMA
+
+
+async def write_records_to_b2(records: list[dict]) -> list[str]:
+    """Write records to B2 as a single Parquet file.
+
+    Batches all rows into one file to minimize B2 transactions.
+    Returns list of record IDs.
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
     from io import BytesIO
-    import traceback
 
-    # Create B2 client (lightweight, no persistent connection)
-    try:
-        b2_client = B2Client()
-    except Exception as e:
-        print(f"B2Client initialization failed: {e}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"B2 initialization failed: {str(e)}")
+    if not records:
+        return []
 
-    # Generate unique filename
-    record_id = str(uuid.uuid4())
+    b2_client = B2Client()
+
+    # Assign IDs
+    record_ids = []
+    for record in records:
+        record_id = str(uuid.uuid4())
+        record["id"] = record_id
+        record_ids.append(record_id)
+
+    # Partition key from first record (all records in a batch share user+date)
+    r0 = records[0]
+    year = r0["year"]
+    month = str(r0["month"]).zfill(2)
+    day = str(r0["day"]).zfill(2)
+    user_partition = f"user={r0.get('user_id', 'anonymous')}"
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    filename = f"pramana_{timestamp}_{record_id[:8]}.parquet"
-
-    # Create date partition path with user partition
-    year = record["year"]
-    month = str(record["month"]).zfill(2)
-    day = str(record["day"]).zfill(2)
-    user_partition = f"user={record.get('user_id', 'anonymous')}"
+    batch_id = record_ids[0][:8]
+    filename = f"pramana_{timestamp}_{batch_id}.parquet"
     key = f"year={year}/month={month}/day={day}/{user_partition}/{filename}"
 
-    # Convert to Parquet
-    schema = pa.schema([
-        ("id", pa.string()),
-        ("timestamp", pa.timestamp("us")),
-        ("user_id", pa.string()),
-        ("model_id", pa.string()),
-        ("prompt_id", pa.string()),
-        ("output", pa.string()),
-        ("output_hash", pa.string()),
-        ("metadata_json", pa.string()),
-        ("year", pa.int32()),
-        ("month", pa.int32()),
-        ("day", pa.int32()),
-    ])
+    table = pa.Table.from_pylist(records, schema=_get_schema())
 
-    # Add ID to record
-    record["id"] = record_id
-
-    # Create table with single row
-    table = pa.Table.from_pylist([record], schema=schema)
-
-    # Write to bytes buffer
     buffer = BytesIO()
-    pq.write_table(
-        table,
-        buffer,
-        compression="ZSTD",
-        compression_level=9,
-    )
+    pq.write_table(table, buffer, compression="ZSTD", compression_level=9)
 
-    # Upload to B2
     buffer.seek(0)
     await b2_client.upload_file(key, buffer.read())
 
-    return record_id
+    return record_ids
 
 
-@router.post("/submit", response_model=SubmissionResponse)
-async def submit_result(
-    submission: SubmissionRequest,
-    authorization: str | None = Header(None)
-):
-    """Submit a single test result.
-
-    Serverless mode: writes immediately to B2, no batching.
-    Supports optional authentication for personalized tracking.
-    """
-    # Validate token and extract user_id (None if anonymous)
-    user_id = validate_token(authorization)
-
-    # Compute hash
+def _build_record(submission: SubmissionRequest, user_id: str | None, now: datetime) -> tuple[dict, str]:
+    """Build a storage record from a submission. Returns (record, output_hash)."""
     hash_input = f"{submission.model_id}|{submission.prompt_id}|{submission.output}"
     output_hash = hashlib.sha256(hash_input.encode()).hexdigest()
-
-    # Create record
-    now = datetime.now(UTC)
     record = {
         "timestamp": now,
         "user_id": user_id or "anonymous",
@@ -208,19 +192,24 @@ async def submit_result(
         "month": now.month,
         "day": now.day,
     }
+    return record, output_hash
 
-    # Write directly to B2
-    try:
-        record_id = await write_to_b2(record)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to write to storage: {str(e)}"
-        )
+
+@router.post("/submit", response_model=SubmissionResponse)
+async def submit_result(
+    submission: SubmissionRequest,
+    authorization: str | None = Header(None)
+):
+    """Submit a single test result. Writes one Parquet file to B2."""
+    user_id = validate_token(authorization)
+    now = datetime.now(UTC)
+    record, output_hash = _build_record(submission, user_id, now)
+
+    record_ids = await write_records_to_b2([record])
 
     return SubmissionResponse(
         status="accepted",
-        id=record_id,
+        id=record_ids[0],
         hash=f"sha256:{output_hash}",
     )
 
@@ -230,25 +219,24 @@ async def submit_batch(
     batch: BatchSubmissionRequest,
     authorization: str | None = Header(None)
 ):
-    """Submit batch of results.
+    """Submit batch of results. Writes ONE Parquet file with all rows."""
+    user_id = validate_token(authorization)
+    now = datetime.now(UTC)
 
-    Note: In serverless mode, each result creates a separate file.
-    For large batches, consider using the CLI to batch locally first.
-    """
-    responses = []
-    errors = []
+    records = []
+    hashes = []
+    for result in batch.results:
+        record, output_hash = _build_record(result, user_id, now)
+        records.append(record)
+        hashes.append(output_hash)
 
-    for idx, result in enumerate(batch.results):
-        try:
-            response = await submit_result(result, authorization=authorization)
-            responses.append(response)
-        except HTTPException as e:
-            errors.append({"index": idx, "error": e.detail})
-        except Exception as e:
-            errors.append({"index": idx, "error": str(e)})
+    record_ids = await write_records_to_b2(records)
 
     return {
-        "status": "completed" if not errors else "partial",
-        "submitted": len(responses),
-        "errors": errors,
+        "status": "completed",
+        "submitted": len(record_ids),
+        "results": [
+            {"id": rid, "hash": f"sha256:{h}"}
+            for rid, h in zip(record_ids, hashes)
+        ],
     }
