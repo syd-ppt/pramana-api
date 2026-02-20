@@ -9,7 +9,7 @@ cd pramana-api
 
 # Python API
 pip install -r requirements.txt
-uvicorn api.main:app --reload
+uvicorn backend.main:app --reload
 
 # Next.js dashboard
 npm install
@@ -34,17 +34,17 @@ This repo deploys as two separate services:
 
 | Directory | Deploys as | Handles |
 |-----------|-----------|---------|
-| `api/` | Python (FastAPI) | Submission, data queries, GDPR, JWT validation |
+| `backend/` | Python (FastAPI) | Submission, data queries, GDPR, JWT validation |
 | `app/`, `components/`, `lib/` | Node.js (Next.js) | Dashboard UI, OAuth login, static pages |
 
 Next.js proxies `/api/*` requests to FastAPI. The exception is `/api/auth/*`, which stays on Next.js (NextAuth.js handles OAuth directly).
 
-A change to `api/` does not trigger a dashboard rebuild, and vice versa. Keep this in mind when testing.
+A change to `backend/` does not trigger a dashboard rebuild, and vice versa. Keep this in mind when testing.
 
 ### Auth Boundary
 
 - **OAuth** (GitHub/Google login) lives entirely in Next.js (`lib/auth.ts`)
-- **JWT validation** lives in FastAPI (`api/routes/submit.py`) — it only verifies tokens, never issues them
+- **JWT validation** lives in FastAPI (`backend/routes/submit.py`) — it only verifies tokens, never issues them
 - **The CLI** (`pramana` repo) stores a token the user copies from the browser — it has no OAuth logic
 
 Do not add OAuth providers, token issuance, or session management to the FastAPI layer. Do not add JWT validation to the Next.js layer.

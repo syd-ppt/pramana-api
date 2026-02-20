@@ -5,8 +5,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.middleware.rate_limit import RateLimitMiddleware
-from api.routes import data, submit, user
+from backend.middleware.rate_limit import RateLimitMiddleware
+from backend.routes import data, submit, user
 
 # Create app
 app = FastAPI(

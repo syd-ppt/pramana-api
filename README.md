@@ -18,7 +18,7 @@ Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
 ```
 
 **Components:**
-- `api/` - FastAPI backend (serverless functions)
+- `backend/` - FastAPI backend (serverless functions)
 - `app/` - Next.js dashboard
 - `docs/` - Architecture documentation
 
@@ -91,7 +91,7 @@ b2 create-bucket your-bucket-name allPrivate
 
 **API:**
 ```bash
-uvicorn api.main:app --reload
+uvicorn backend.main:app --reload
 # http://localhost:8000
 ```
 

@@ -8,8 +8,8 @@ from io import BytesIO
 import pyarrow.parquet as pq
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from api.storage.b2_client import B2Client
-from api.routes.submit import validate_token
+from backend.storage.b2_client import B2Client
+from backend.routes.submit import validate_token
 
 router = APIRouter()
 

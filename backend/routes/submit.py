@@ -10,12 +10,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Header, HTTPException
 import jwt
 
-from api.models.schemas import (
+from backend.models.schemas import (
     BatchSubmissionRequest,
     SubmissionRequest,
     SubmissionResponse,
 )
-from api.storage.b2_client import B2Client
+from backend.storage.b2_client import B2Client
 
 router = APIRouter()
 

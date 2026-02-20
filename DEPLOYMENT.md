@@ -47,7 +47,7 @@ Required on Vercel:
 
 **FastAPI backend:**
 ```bash
-uvicorn api.main:app --reload
+uvicorn backend.main:app --reload
 ```
 
 **Next.js dashboard:**
@@ -57,7 +57,7 @@ cd app && npm run dev
 
 ### Troubleshooting
 
-**Python runtime errors:** Check that `api/main.py` exports `handler = app` for Vercel compatibility.
+**Python runtime errors:** Check that `backend/main.py` exports `handler = app` for Vercel compatibility.
 
 **OAuth errors:** Ensure `NEXTAUTH_URL` matches your Vercel domain and OAuth callback URLs are configured correctly in GitHub/Google apps.
 

@@ -117,7 +117,7 @@ Submissions are proxied by Next.js rewrites to the FastAPI backend.
 
 ---
 
-### 2. FastAPI Backend (`api/`)
+### 2. FastAPI Backend (`backend/`)
 
 **Deployment:** `your-app-api` Vercel project
 **URL:** `your-api.vercel.app`
@@ -126,12 +126,12 @@ Submissions are proxied by Next.js rewrites to the FastAPI backend.
 
 | File | Purpose |
 |------|---------|
-| `api/main.py` | FastAPI app, CORS, rate limit middleware |
-| `api/routes/submit.py` | POST /api/submit, JWT validation, Parquet write |
-| `api/routes/data.py` | GET /api/data/chart, B2 read, aggregation |
-| `api/routes/user.py` | DELETE /api/user/me, GET /api/user/me/stats |
-| `api/storage/b2_client.py` | b2sdk wrapper, upload/delete/repartition |
-| `api/models/schemas.py` | Pydantic request/response models |
+| `backend/main.py` | FastAPI app, CORS, rate limit middleware |
+| `backend/routes/submit.py` | POST /api/submit, JWT validation, Parquet write |
+| `backend/routes/data.py` | GET /api/data/chart, B2 read, aggregation |
+| `backend/routes/user.py` | DELETE /api/user/me, GET /api/user/me/stats |
+| `backend/storage/b2_client.py` | b2sdk wrapper, upload/delete/repartition |
+| `backend/models/schemas.py` | Pydantic request/response models |
 
 **Endpoints:**
 
@@ -387,7 +387,7 @@ DELETE /api/user/me
 
 ### Rate Limiting
 
-- 60 requests/minute per IP (`RateLimitMiddleware` in `api/main.py`)
+- 60 requests/minute per IP (`RateLimitMiddleware` in `backend/main.py`)
 - Returns HTTP 429
 
 ### CORS

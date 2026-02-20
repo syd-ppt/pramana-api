@@ -50,7 +50,7 @@ def test_b2_client():
         return
 
     try:
-        from api.storage.b2_client import B2Client
+        from backend.storage.b2_client import B2Client
         client = B2Client()
         print("  ✓ B2Client initialized successfully")
     except Exception as e:
@@ -61,7 +61,7 @@ def test_api_route():
     print("\nTesting API route...")
 
     try:
-        from api.routes import submit
+        from backend.routes import submit
         print("  ✓ Import submit module")
 
         # Test with mock data
