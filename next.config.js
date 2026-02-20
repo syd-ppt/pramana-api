@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async rewrites() {
-    if (!process.env.NEXT_PUBLIC_API_URL) {
-      throw new Error('NEXT_PUBLIC_API_URL environment variable is required');
-    }
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      console.warn('NEXT_PUBLIC_API_URL not set — API rewrites disabled (set in Vercel project settings)');
+      return [];
+    }
     return [
       { source: '/api/submit', destination: `${apiUrl}/api/submit` },
       { source: '/api/health', destination: `${apiUrl}/api/health` },
