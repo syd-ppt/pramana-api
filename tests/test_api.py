@@ -140,23 +140,25 @@ def test_batch_schema_rejects_too_many_results():
 # ── CORS: production requires CORS_ORIGINS ───────────────────────────
 
 
-def test_cors_raises_in_production_without_origins():
-    """CORS_ORIGINS must be set when ENVIRONMENT is not development."""
+def test_cors_warns_in_production_without_origins():
+    """CORS_ORIGINS warning is logged when ENVIRONMENT is production without CORS_ORIGINS."""
     import subprocess
     import sys
 
     result = subprocess.run(
         [
             sys.executable, "-c",
-            "import os; "
+            "import os, logging; "
+            "logging.basicConfig(level=logging.WARNING); "
             "os.environ['ENVIRONMENT'] = 'production'; "
             "os.environ.pop('CORS_ORIGINS', None); "
+            "os.environ.pop('VERCEL_ENV', None); "
             "from api.main import app",
         ],
         capture_output=True,
         text=True,
     )
-    assert result.returncode != 0
+    assert result.returncode == 0
     assert "CORS_ORIGINS" in result.stderr
 
 
