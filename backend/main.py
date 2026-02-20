@@ -131,4 +131,30 @@ async def debug_b2_list(prefix: str = "year=2026/month=02/day=13/"):
     return results
 
 
+@app.get("/api/debug/chart-trace")
+async def debug_chart_trace():
+    """Run the exact chart code path and trace results."""
+    import asyncio
+    from backend.routes.data import _list_and_download_with_client, _executor
+
+    loop = asyncio.get_running_loop()
+
+    # Run the exact same function the chart uses
+    try:
+        data = await loop.run_in_executor(
+            _executor,
+            _list_and_download_with_client,
+            "2026-02-13",
+            "2026-02-13",
+        )
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    return {
+        "keys": list(data.keys()) if data else [],
+        "row_count": len(data.get("model_id", [])) if data else 0,
+        "sample": {k: v[:3] for k, v in data.items()} if data else {},
+    }
+
+
 # Vercel will auto-detect the `app` export for FastAPI
