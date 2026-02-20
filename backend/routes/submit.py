@@ -1,6 +1,7 @@
 """Submission API routes - Serverless-optimized."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -8,7 +9,6 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Header, HTTPException
-import jwt
 
 from backend.models.schemas import (
     BatchSubmissionRequest,
@@ -20,8 +20,58 @@ from backend.storage.b2_client import B2Client
 router = APIRouter()
 
 
+def _derive_nextauth_key(secret: str) -> bytes:
+    """Derive the AES-256-GCM encryption key from NEXTAUTH_SECRET.
+
+    NextAuth v4 uses HKDF(SHA-256) with:
+      ikm=secret, salt="", info="NextAuth.js Generated Encryption Key", length=32
+    """
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
+
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"",
+        info=b"NextAuth.js Generated Encryption Key",
+    ).derive(secret.encode())
+
+
+def _decrypt_nextauth_jwe(token: str, secret: str) -> dict:
+    """Decrypt a NextAuth v4 JWE token (alg=dir, enc=A256GCM).
+
+    Token format (compact JWE): header.encryptedKey.iv.ciphertext.tag
+    With alg=dir, encryptedKey is empty.
+    """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    parts = token.split(".")
+    if len(parts) != 5:
+        raise ValueError(f"JWE must have 5 parts, got {len(parts)}")
+
+    _header_b64, _enc_key_b64, iv_b64, ciphertext_b64, tag_b64 = parts
+
+    # base64url decode (add padding)
+    def b64url_decode(s: str) -> bytes:
+        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+    iv = b64url_decode(iv_b64)
+    ciphertext = b64url_decode(ciphertext_b64)
+    tag = b64url_decode(tag_b64)
+
+    # AAD is the ASCII bytes of the protected header
+    aad = _header_b64.encode("ascii")
+
+    key = _derive_nextauth_key(secret)
+    aesgcm = AESGCM(key)
+
+    # AES-GCM expects ciphertext || tag
+    plaintext = aesgcm.decrypt(iv, ciphertext + tag, aad)
+    return json.loads(plaintext)
+
+
 def validate_token(authorization: str | None) -> str | None:
-    """Validate JWT token and extract user_id.
+    """Validate NextAuth JWE token and extract user_id.
 
     Args:
         authorization: Authorization header value
@@ -45,8 +95,7 @@ def validate_token(authorization: str | None) -> str | None:
         raise HTTPException(status_code=500, detail="JWT secret not configured")
 
     try:
-        # Decode JWT token
-        payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])
+        payload = _decrypt_nextauth_jwe(token, jwt_secret)
         user_id = payload.get("userId")
 
         if not user_id:
@@ -54,10 +103,10 @@ def validate_token(authorization: str | None) -> str | None:
 
         return user_id
 
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
 
 async def write_to_b2(record: dict) -> str:

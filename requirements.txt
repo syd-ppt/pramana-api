@@ -17,6 +17,7 @@ pydantic>=2.5.0
 
 # Authentication
 PyJWT>=2.8.0
+cryptography>=42.0.0
 
 # Multipart forms
 python-multipart>=0.0.9
