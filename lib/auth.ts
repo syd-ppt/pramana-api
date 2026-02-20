@@ -26,8 +26,8 @@ function buildProviders(): Provider[] {
   }
 
   if (providers.length === 0) {
-    throw new Error(
-      "No OAuth providers configured. Set GITHUB_ID/GITHUB_SECRET or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET."
+    console.warn(
+      "No OAuth providers configured. Auth routes will fail at runtime. Set GITHUB_ID/GITHUB_SECRET or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET."
     )
   }
 
