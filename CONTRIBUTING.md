@@ -23,7 +23,7 @@ npm run dev
 Pramana's backend is intentionally minimal. The entire data path is:
 
 1. **CLI** ([pramana](https://github.com/syd-ppt/pramana)) runs prompts against LLM APIs and submits results
-2. **API** (this repo) writes each submission as a single Parquet file to Cloudflare R2 — no database, no cache, no queue
+2. **API** (this repo) writes each submission as a single Parquet file to S3-compatible object storage — no database, no cache, no queue
 3. **Dashboard** (this repo) reads those Parquet files back, aggregates server-side with PyArrow, and renders charts
 
 That's it. If your PR introduces additional infrastructure (databases, caches, task queues, ORMs), it almost certainly doesn't fit.

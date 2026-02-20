@@ -1,4 +1,4 @@
-"""Cloudflare R2 storage client — S3-compatible, serverless-optimized."""
+"""S3-compatible object storage client — provider-agnostic."""
 from __future__ import annotations
 
 import asyncio
@@ -9,27 +9,40 @@ from io import BytesIO
 import boto3
 
 
-class StorageClient:
-    """S3-compatible object storage client for Cloudflare R2.
+_STORAGE_ENV_VARS = (
+    "STORAGE_ENDPOINT_URL",
+    "STORAGE_ACCESS_KEY_ID",
+    "STORAGE_SECRET_ACCESS_KEY",
+    "STORAGE_BUCKET_NAME",
+)
 
-    Drop-in replacement for the old B2Client. All consumers use the same
-    public API: upload_file, list_files, download_file, delete_file.
+
+class StorageClient:
+    """S3-compatible object storage client.
+
+    Works with any S3-compatible service (Cloudflare R2, AWS S3, MinIO,
+    DigitalOcean Spaces). Switching providers = change env var values only.
     """
 
     MAX_SCAN_FILES = 1000
 
+    @classmethod
+    def is_configured(cls) -> bool:
+        """Return True if all required storage env vars are set."""
+        return all(os.getenv(v) for v in _STORAGE_ENV_VARS)
+
     def __init__(self):
-        self.endpoint_url = os.getenv("R2_ENDPOINT_URL")
-        self.access_key = os.getenv("R2_ACCESS_KEY_ID")
-        self.secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
-        self.bucket_name = os.getenv("R2_BUCKET_NAME")
+        self.endpoint_url = os.getenv("STORAGE_ENDPOINT_URL")
+        self.access_key = os.getenv("STORAGE_ACCESS_KEY_ID")
+        self.secret_key = os.getenv("STORAGE_SECRET_ACCESS_KEY")
+        self.bucket_name = os.getenv("STORAGE_BUCKET_NAME")
 
         if not self.bucket_name:
-            raise ValueError("R2_BUCKET_NAME not set.")
+            raise ValueError("STORAGE_BUCKET_NAME not set.")
         if not self.endpoint_url:
-            raise ValueError("R2_ENDPOINT_URL not set.")
+            raise ValueError("STORAGE_ENDPOINT_URL not set.")
         if not self.access_key or not self.secret_key:
-            raise ValueError("R2 credentials not set. Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.")
+            raise ValueError("Storage credentials not set. Set STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY.")
 
         self.s3 = boto3.client(
             "s3",
@@ -42,7 +55,7 @@ class StorageClient:
     # ── Write ──────────────────────────────────────────────
 
     async def upload_file(self, key: str, data: bytes) -> str:
-        """Upload bytes to R2. Returns the object key."""
+        """Upload bytes to storage. Returns the object key."""
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
@@ -111,7 +124,3 @@ class StorageClient:
             return len(matched)
 
         return await loop.run_in_executor(None, _move)
-
-
-# Backward-compatible alias — all imports use `from backend.storage.b2_client import B2Client`
-B2Client = StorageClient

@@ -15,7 +15,7 @@ from backend.models.schemas import (
     SubmissionRequest,
     SubmissionResponse,
 )
-from backend.storage.b2_client import StorageClient
+from backend.storage.client import StorageClient
 
 router = APIRouter()
 

@@ -42,7 +42,7 @@ async def test_health_returns_healthy(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert "b2_configured" in data
+    assert "storage_configured" in data
 
 
 @pytest.mark.anyio
@@ -188,51 +188,40 @@ def test_cors_warns_in_production_without_origins():
     assert "CORS_ORIGINS" in result.stderr
 
 
-# ── B2Client: deletion finds files in nested date partitions ─────────
+# ── StorageClient: deletion finds files in nested date partitions ────
 
 
-def test_b2_delete_finds_nested_user_files():
+def test_storage_delete_finds_nested_user_files():
     """delete_user_data scans recursively and finds user files in date partitions."""
-    from backend.storage.b2_client import B2Client
+    from backend.storage.client import StorageClient
 
-    # Create mock file versions in nested date paths
-    mock_file_1 = MagicMock()
-    mock_file_1.file_name = "year=2025/month=01/day=15/user=abc123/file1.parquet"
-    mock_file_1.id_ = "id1"
+    mock_s3 = MagicMock()
 
-    mock_file_2 = MagicMock()
-    mock_file_2.file_name = "year=2025/month=01/day=16/user=abc123/file2.parquet"
-    mock_file_2.id_ = "id2"
-
-    mock_file_other = MagicMock()
-    mock_file_other.file_name = "year=2025/month=01/day=15/user=other/file3.parquet"
-    mock_file_other.id_ = "id3"
-
-    mock_bucket = MagicMock()
-    mock_bucket.ls.return_value = [
-        (mock_file_1, None),
-        (mock_file_2, None),
-        (mock_file_other, None),
+    # Mock list_files to return keys with user partitions
+    user_keys = [
+        "year=2025/month=01/day=15/user=abc123/file1.parquet",
+        "year=2025/month=01/day=16/user=abc123/file2.parquet",
+        "year=2025/month=01/day=15/user=other/file3.parquet",
     ]
 
-    mock_api = MagicMock()
+    with patch.object(StorageClient, "__init__", lambda _self: None):
+        client = StorageClient()
+        client.s3 = mock_s3
+        client.bucket_name = "test-bucket"
+        client.MAX_SCAN_FILES = 1000
 
-    # Patch B2Client.__init__ to avoid real B2 connection
-    with patch.object(B2Client, "__init__", lambda _self: None):
-        client = B2Client()
-        client.bucket = mock_bucket
-        client.api = mock_api
-
-    import asyncio
-
-    deleted = asyncio.run(client.delete_user_data("abc123"))
+    # Patch list_files to return our test keys
+    with patch.object(client, "list_files", return_value=user_keys):
+        import asyncio
+        deleted = asyncio.run(client.delete_user_data("abc123"))
 
     assert deleted == 2
-    assert mock_api.delete_file_version.call_count == 2
-    # Verify only user=abc123 files were deleted
-    calls = mock_api.delete_file_version.call_args_list
-    assert calls[0].args == ("id1", mock_file_1.file_name)
-    assert calls[1].args == ("id2", mock_file_2.file_name)
+    mock_s3.delete_objects.assert_called_once()
+    call_args = mock_s3.delete_objects.call_args
+    deleted_keys = [o["Key"] for o in call_args.kwargs["Delete"]["Objects"]]
+    assert "year=2025/month=01/day=15/user=abc123/file1.parquet" in deleted_keys
+    assert "year=2025/month=01/day=16/user=abc123/file2.parquet" in deleted_keys
+    assert "year=2025/month=01/day=15/user=other/file3.parquet" not in deleted_keys
 
 
 # ── Stats endpoint requires auth ─────────────────────────────────────
@@ -453,16 +442,16 @@ class TestValidateToken:
 
 @pytest.mark.anyio
 async def test_health_storage_not_configured_without_env(client, monkeypatch):
-    """Health endpoint reports storage_configured=false when R2 env vars are missing."""
-    monkeypatch.delenv("R2_ENDPOINT_URL", raising=False)
-    monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
-    monkeypatch.delenv("R2_SECRET_ACCESS_KEY", raising=False)
-    monkeypatch.delenv("R2_BUCKET_NAME", raising=False)
+    """Health endpoint reports storage_configured=false when storage env vars are missing."""
+    monkeypatch.delenv("STORAGE_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("STORAGE_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("STORAGE_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("STORAGE_BUCKET_NAME", raising=False)
     response = await client.get("/api/health")
     data = response.json()
     assert data["storage_configured"] is False, (
-        f"storage_configured should be false without R2 env vars, got {data['storage_configured']}. "
-        "Check backend/main.py health() R2 env var check logic."
+        f"storage_configured should be false without STORAGE_* env vars, got {data['storage_configured']}. "
+        "Check backend/main.py health() StorageClient.is_configured() logic."
     )
 
 

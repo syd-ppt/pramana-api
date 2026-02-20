@@ -8,7 +8,7 @@ from io import BytesIO
 import pyarrow.parquet as pq
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from backend.storage.b2_client import StorageClient
+from backend.storage.client import StorageClient
 from backend.routes.submit import validate_token
 
 router = APIRouter()

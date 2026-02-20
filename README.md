@@ -11,7 +11,7 @@ Users run a standard set of prompts against any model using the [Pramana CLI](ht
 ## Architecture
 
 ```
-Public CLI (pramana) → Vercel API → R2 Storage → Vercel Dashboard
+Public CLI (pramana) → Vercel API → Object Storage → Vercel Dashboard
                           ↓            ↓              ↓
                       Serverless    Parquet      Next.js + PyArrow
                       Functions     (ZSTD)       Aggregation
@@ -22,7 +22,7 @@ Public CLI (pramana) → Vercel API → R2 Storage → Vercel Dashboard
 - `app/` - Next.js dashboard
 - `docs/` - Architecture documentation
 
-**Cost: $0/month** (Vercel free tier + R2 $0 egress)
+**Cost: $0/month** (Vercel free tier + S3-compatible storage)
 
 ---
 
@@ -30,7 +30,7 @@ Public CLI (pramana) → Vercel API → R2 Storage → Vercel Dashboard
 
 - ✅ **Serverless API** - FastAPI on Vercel (zero cost)
 - ✅ **Next.js Dashboard** - Real-time drift visualization
-- ✅ **R2 Storage** - Cost-effective Parquet storage with zero egress fees
+- ✅ **Object Storage** - S3-compatible Parquet storage
 - ✅ **User Authentication** - GitHub/Google OAuth via NextAuth.js
 - ✅ **Personalized Tracking** - "You vs Crowd" statistics
 - ✅ **GDPR Compliant** - Full deletion or anonymization options
@@ -55,7 +55,7 @@ cp .env.example .env
 ```
 
 **Required:**
-- `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - R2 storage
+- `STORAGE_ENDPOINT_URL`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET_NAME` - Object storage (see CLAUDE.md)
 - `NEXTAUTH_SECRET` - Generate with `openssl rand -base64 32`
 - `NEXTAUTH_URL` - Your Vercel deployment URL
 - `GITHUB_ID`, `GITHUB_SECRET` - GitHub OAuth app
@@ -63,9 +63,9 @@ cp .env.example .env
 
 See the OAuth provider docs for setup instructions.
 
-### 3. Create R2 Bucket
+### 3. Create Storage Bucket
 
-1. Go to **Cloudflare Dashboard** → **R2 Object Storage**
+1. For Cloudflare R2: Go to **Cloudflare Dashboard** → **R2 Object Storage**
 2. Click **Create bucket** → name it `your-bucket-name`
 3. Under **Settings → CORS Policy**, add:
    ```json
@@ -122,11 +122,11 @@ Vercel will:
 Set in Vercel dashboard or CLI:
 
 ```bash
-# R2 Storage
-vercel env add R2_ENDPOINT_URL
-vercel env add R2_ACCESS_KEY_ID
-vercel env add R2_SECRET_ACCESS_KEY
-vercel env add R2_BUCKET_NAME
+# Object Storage (S3-compatible)
+vercel env add STORAGE_ENDPOINT_URL
+vercel env add STORAGE_ACCESS_KEY_ID
+vercel env add STORAGE_SECRET_ACCESS_KEY
+vercel env add STORAGE_BUCKET_NAME
 
 # NextAuth (Authentication)
 vercel env add NEXTAUTH_URL
@@ -141,10 +141,10 @@ vercel env add CORS_ORIGINS
 ```
 
 **Values:**
-- `R2_ENDPOINT_URL`: Your Cloudflare R2 S3-compatible endpoint
-- `R2_ACCESS_KEY_ID`: Your R2 API token access key ID
-- `R2_SECRET_ACCESS_KEY`: Your R2 API token secret access key
-- `R2_BUCKET_NAME`: Your R2 bucket name
+- `STORAGE_ENDPOINT_URL`: Your S3-compatible endpoint
+- `STORAGE_ACCESS_KEY_ID`: Your storage access key ID
+- `STORAGE_SECRET_ACCESS_KEY`: Your storage secret access key
+- `STORAGE_BUCKET_NAME`: Your storage bucket name
 - `NEXTAUTH_URL`: Your deployment URL
 - `NEXTAUTH_SECRET`: Generate with `openssl rand -base64 32`
 - `GITHUB_ID`, `GITHUB_SECRET`: From GitHub OAuth app
@@ -263,14 +263,14 @@ Health check endpoint.
 - Analytics: Included in free tier
 - Function metrics: Execution time, errors
 
-**R2 Usage:**
-Check storage metrics in **Cloudflare Dashboard → R2 → your bucket → Metrics**.
+**Storage Usage:**
+Check storage metrics in your provider's dashboard.
 
 **Costs (monthly):**
 - Vercel: **$0** (free tier: 100GB bandwidth, 100k function invocations)
-- R2 Storage: **~$0.015/GB** (10GB free)
-- R2 Egress: **$0** (zero egress fees)
-- R2 Operations: **1M Class B reads free, 10M Class A writes free**
+- Storage: **~$0.015/GB** (10GB free)
+- Egress: **$0** (zero egress fees)
+- Operations: **1M Class B reads free, 10M Class A writes free**
 
 **Total: < $1/month for 10K submissions**
 
@@ -287,10 +287,10 @@ Check storage metrics in **Cloudflare Dashboard → R2 → your bucket → Metri
 - Update `CORS_ORIGINS` env var in Vercel
 - Match exact domain (include https://)
 
-**R2 upload fails:**
-- Verify bucket name matches `R2_BUCKET_NAME`
-- Check R2 API token has write permissions
-- Verify `R2_ENDPOINT_URL` is correct
+**Storage upload fails:**
+- Verify bucket name matches `STORAGE_BUCKET_NAME`
+- Check storage API token has write permissions
+- Verify `STORAGE_ENDPOINT_URL` is correct
 - Ensure bucket is not public-read (use CORS instead)
 
 ---
@@ -304,8 +304,8 @@ Check storage metrics in **Cloudflare Dashboard → R2 → your bucket → Metri
 - [x] OAuth providers (GitHub, Google)
 - [x] GDPR-compliant data deletion
 - [x] User-partitioned object storage
-- [ ] Enable R2 bucket encryption
-- [ ] Rotate R2 keys regularly
+- [ ] Enable bucket encryption
+- [ ] Rotate storage keys regularly
 - [ ] Add session timeout policies
 
 ---
@@ -314,12 +314,12 @@ Check storage metrics in **Cloudflare Dashboard → R2 → your bucket → Metri
 
 **Backup data:**
 ```bash
-# Download all Parquet files (using AWS CLI with R2 endpoint)
-aws s3 sync s3://your-bucket-name ./backup --endpoint-url $R2_ENDPOINT_URL
+# Download all Parquet files (using AWS CLI with S3-compatible endpoint)
+aws s3 sync s3://your-bucket-name ./backup --endpoint-url $STORAGE_ENDPOINT_URL
 ```
 
 **Clear old data (optional):**
-Set R2 lifecycle rules to delete files after 365 days (Cloudflare Dashboard → R2 → bucket → Settings).
+Set lifecycle rules to delete files after 365 days in your provider's bucket settings.
 
 ---
 
@@ -329,7 +329,7 @@ Set R2 lifecycle rules to delete files after 365 days (Cloudflare Dashboard → 
 |---------|-------------------|--------------|
 | API Hosting | $5/month | **$0/month** |
 | Dashboard | Vercel free | **$0/month** |
-| Storage (R2) | $0.03/month | **$0.00/month** |
+| Storage (Object Storage) | $0.03/month | **$0.00/month** |
 | **Total** | **$5/month** | **$0.00/month** |
 
 **167x cost reduction!** 🎉

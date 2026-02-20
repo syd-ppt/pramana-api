@@ -11,7 +11,7 @@ from io import BytesIO
 import pyarrow.parquet as pq
 from fastapi import APIRouter, Query
 
-from backend.storage.b2_client import StorageClient
+from backend.storage.client import StorageClient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

@@ -41,17 +41,17 @@ def test_storage_client():
     import os
 
     # Check env vars
-    print(f"  R2_ENDPOINT_URL: {'SET' if os.getenv('R2_ENDPOINT_URL') else 'NOT SET'}")
-    print(f"  R2_ACCESS_KEY_ID: {'SET' if os.getenv('R2_ACCESS_KEY_ID') else 'NOT SET'}")
-    print(f"  R2_SECRET_ACCESS_KEY: {'SET' if os.getenv('R2_SECRET_ACCESS_KEY') else 'NOT SET'}")
-    print(f"  R2_BUCKET_NAME: {os.getenv('R2_BUCKET_NAME', 'NOT SET')}")
+    print(f"  STORAGE_ENDPOINT_URL: {'SET' if os.getenv('STORAGE_ENDPOINT_URL') else 'NOT SET'}")
+    print(f"  STORAGE_ACCESS_KEY_ID: {'SET' if os.getenv('STORAGE_ACCESS_KEY_ID') else 'NOT SET'}")
+    print(f"  STORAGE_SECRET_ACCESS_KEY: {'SET' if os.getenv('STORAGE_SECRET_ACCESS_KEY') else 'NOT SET'}")
+    print(f"  STORAGE_BUCKET_NAME: {os.getenv('STORAGE_BUCKET_NAME', 'NOT SET')}")
 
-    if not os.getenv('R2_ENDPOINT_URL') or not os.getenv('R2_ACCESS_KEY_ID'):
+    if not os.getenv('STORAGE_ENDPOINT_URL') or not os.getenv('STORAGE_ACCESS_KEY_ID'):
         print("  ⚠ Skipping storage test - credentials not set")
         return
 
     try:
-        from backend.storage.b2_client import StorageClient
+        from backend.storage.client import StorageClient
         client = StorageClient()
         print("  ✓ StorageClient initialized successfully")
     except Exception as e:

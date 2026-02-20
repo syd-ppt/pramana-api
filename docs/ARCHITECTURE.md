@@ -54,21 +54,21 @@
 │          your-api.vercel.app  (FastAPI)                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  POST /api/submit      - Validate, hash, write to R2           │
-│  GET  /api/data/chart  - Read R2 parquet, aggregate, return JSON│
+│  POST /api/submit      - Validate, hash, write to storage      │
+│  GET  /api/data/chart  - Read parquet from storage, aggregate, return JSON│
 │  GET  /api/health      - Storage connectivity check            │
 │  DELETE /api/user/me   - GDPR: delete or anonymize user data   │
 │  GET  /api/user/me/stats - Per-user submission stats           │
 │                                                                 │
 │  - JWT validation (NEXTAUTH_SECRET, HS256)                     │
 │  - Rate limiting: 60 req/min per IP                            │
-│  - R2 access via boto3 (server-side, credentials only)         │
+│  - Storage access via boto3 (server-side, credentials only)    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
           │  boto3 (private)
           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Cloudflare R2 Storage  (private)               │
+│                  S3-Compatible Object Storage  (private)        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  Parquet Files (ZSTD level 9)                 $0 egress        │
@@ -128,17 +128,17 @@ Submissions are proxied by Next.js rewrites to the FastAPI backend.
 |------|---------|
 | `backend/main.py` | FastAPI app, CORS, rate limit middleware |
 | `backend/routes/submit.py` | POST /api/submit, JWT validation, Parquet write |
-| `backend/routes/data.py` | GET /api/data/chart, R2 read, aggregation |
+| `backend/routes/data.py` | GET /api/data/chart, storage read, aggregation |
 | `backend/routes/user.py` | DELETE /api/user/me, GET /api/user/me/stats |
-| `backend/storage/b2_client.py` | S3-compatible storage client (boto3), upload/delete/repartition |
+| `backend/storage/client.py` | S3-compatible storage client (boto3), provider-agnostic |
 | `backend/models/schemas.py` | Pydantic request/response models |
 
 **Endpoints:**
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/submit` | Optional JWT | Write single result to R2 |
-| POST | `/api/submit/batch` | Optional JWT | Write multiple results |
+| POST | `/api/submit` | Optional JWT | Write single result to storage |
+| POST | `/api/submit/batch` | Optional JWT | Write multiple results to storage |
 | GET | `/api/data/chart` | None | Aggregated chart data (JSON) |
 | GET | `/api/health` | None | Storage connectivity check |
 | DELETE | `/api/user/me` | Required JWT | Delete or anonymize user data |
@@ -232,7 +232,7 @@ token.userId = userId
 
 ---
 
-### 5. Storage (Cloudflare R2)
+### 5. Storage (S3-compatible, currently Cloudflare R2)
 
 **Bucket visibility:** `private` — no public read, all access via boto3 server-side
 **Cost:** ~$0.015/GB/month storage, $0 egress, 1M free Class B reads/month
@@ -271,10 +271,10 @@ token.userId = userId
 
 | Var | Purpose |
 |-----|---------|
-| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint |
-| `R2_ACCESS_KEY_ID` | R2 API token access key |
-| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
-| `R2_BUCKET_NAME` | Bucket name (required) |
+| `STORAGE_ENDPOINT_URL` | S3-compatible endpoint |
+| `STORAGE_ACCESS_KEY_ID` | Storage access key |
+| `STORAGE_SECRET_ACCESS_KEY` | Storage secret key |
+| `STORAGE_BUCKET_NAME` | Bucket name (required) |
 | `NEXTAUTH_SECRET` | JWT validation (shared with Next.js) |
 | `CORS_ORIGINS` | Comma-separated allowed origins |
 
@@ -297,7 +297,7 @@ token.userId = userId
 
 5. Computes sha256(model_id|prompt_id|output)
 
-6. Writes Parquet to R2:
+6. Writes Parquet to storage:
    └─> year=YYYY/month=MM/day=DD/user={user_id}/pramana_{ts}_{uuid8}.parquet
 
 7. Returns {status: "accepted", id: "uuid", hash: "sha256:..."}
@@ -312,7 +312,7 @@ token.userId = userId
 
 3. Next.js proxy rewrites to your-api.vercel.app/api/data/chart
 
-4. FastAPI lists R2 files for each date in range (by prefix)
+4. FastAPI lists storage files for each date in range (by prefix)
 
 5. Downloads matching .parquet files in parallel (PyArrow, ThreadPoolExecutor)
 

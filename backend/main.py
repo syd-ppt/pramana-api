@@ -58,16 +58,11 @@ async def root():
 @app.get("/api/health")
 async def health():
     """Health check for load balancers."""
-    storage_configured = bool(
-        os.getenv("R2_ENDPOINT_URL")
-        and os.getenv("R2_ACCESS_KEY_ID")
-        and os.getenv("R2_SECRET_ACCESS_KEY")
-        and os.getenv("R2_BUCKET_NAME")
-    )
+    from backend.storage.client import StorageClient
 
     return {
         "status": "healthy",
-        "storage_configured": storage_configured,
+        "storage_configured": StorageClient.is_configured(),
     }
 
 
