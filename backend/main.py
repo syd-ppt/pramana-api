@@ -58,15 +58,44 @@ async def root():
 @app.get("/api/health")
 async def health():
     """Health check for load balancers."""
+    import asyncio
+
     b2_configured = bool(
         (os.getenv("B2_KEY_ID") or os.getenv("B2_APPLICATION_KEY_ID"))
         and os.getenv("B2_APPLICATION_KEY")
         and os.getenv("B2_BUCKET_NAME")
     )
 
+    b2_connection = "not_tested"
+    b2_file_count = 0
+    b2_sample_files: list[str] = []
+
+    if b2_configured:
+        try:
+            from backend.storage.b2_client import B2Client
+
+            loop = asyncio.get_running_loop()
+            client = await loop.run_in_executor(None, B2Client)
+            count = 0
+            samples: list[str] = []
+            for fv, _ in client.bucket.ls(recursive=True):
+                count += 1
+                if len(samples) < 5:
+                    samples.append(fv.file_name)
+                if count >= 100:
+                    break
+            b2_connection = "success"
+            b2_file_count = count
+            b2_sample_files = samples
+        except Exception as exc:
+            b2_connection = f"error: {exc}"
+
     return {
         "status": "healthy",
         "b2_configured": b2_configured,
+        "b2_connection": b2_connection,
+        "b2_file_count": b2_file_count,
+        "b2_sample_files": b2_sample_files,
     }
 
 
