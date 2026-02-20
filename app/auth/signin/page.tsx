@@ -11,6 +11,8 @@ export default async function SignInPage() {
     redirect('/cli-token')
   }
 
+  const providerIds = authOptions.providers.map((p) => p.id)
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6">
       <div className="max-w-md w-full">
@@ -24,7 +26,7 @@ export default async function SignInPage() {
             </p>
           </div>
 
-          <SignInButtons />
+          <SignInButtons providers={providerIds} />
 
           <div className="mt-8 text-center text-sm text-slate-600">
             <p>
