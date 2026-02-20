@@ -153,7 +153,7 @@ key = f"year={y}/month={m:02d}/day={d:02d}/user={user_id}/{filename}"
 await b2_client.upload_file(key, parquet_bytes)
 ```
 
-**Data query flow (server-side PyArrow, no DuckDB-WASM):**
+**Data query flow (server-side PyArrow):**
 ```python
 # api/routes/data.py
 # 1. Enumerate date prefixes in range → list matching .parquet files
@@ -181,10 +181,9 @@ await b2_client.upload_file(key, parquet_bytes)
 | `app/api/auth/[...nextauth]/route.ts` | NextAuth.js handler |
 | `lib/auth.ts` | NextAuth options (GitHub + Google providers) |
 | `lib/statistics.ts` | Client-side drift detection (Mann-Whitney U) |
-| ~~`lib/duckdb.ts`~~ | DuckDB-WASM (moved to `.private/`, unused) |
 | `next.config.js` | API proxy rewrites |
 
-**Data loading (no DuckDB-WASM):**
+**Data loading:**
 ```typescript
 // app/page.tsx
 const res = await fetch(`/api/data/chart?start_date=...&end_date=...`);
@@ -430,7 +429,6 @@ GET your-app.vercel.app/api/health
 ## Future Enhancements
 
 - [ ] Pre-signed B2 URLs for direct browser Parquet access (CORS already configured)
-- [ ] Client-side DuckDB-WASM analytics
 - [ ] Automated daily runs (GitHub Actions)
 - [ ] Email alerts for drift detection
 - [ ] LLM judge assertions

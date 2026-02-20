@@ -13,8 +13,8 @@ Users run a standard set of prompts against any model using the [Pramana CLI](ht
 ```
 Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
                           ↓            ↓              ↓
-                      Serverless    Parquet      Next.js/Static
-                      Functions     (ZSTD)       DuckDB-WASM
+                      Serverless    Parquet      Next.js + PyArrow
+                      Functions     (ZSTD)       Aggregation
 ```
 
 **Components:**
@@ -34,7 +34,7 @@ Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
 - ✅ **User Authentication** - GitHub/Google OAuth via NextAuth.js
 - ✅ **Personalized Tracking** - "You vs Crowd" statistics
 - ✅ **GDPR Compliant** - Full deletion or anonymization options
-- ✅ **DuckDB-WASM** - In-browser analytics
+- ✅ **PyArrow** - Server-side Parquet aggregation
 
 ---
 
