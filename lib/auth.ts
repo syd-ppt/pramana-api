@@ -34,6 +34,16 @@ function buildProviders(): Provider[] {
   return providers
 }
 
+export function extractSessionToken(
+  cookieStore: { get(name: string): { value: string } | undefined }
+): string {
+  return (
+    cookieStore.get("__Secure-next-auth.session-token")?.value ??
+    cookieStore.get("next-auth.session-token")?.value ??
+    ""
+  )
+}
+
 export const authOptions: NextAuthOptions = {
   providers: buildProviders(),
   session: {

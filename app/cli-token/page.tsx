@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { authOptions, extractSessionToken } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 import CopyButton from "@/components/CopyButton"
@@ -12,13 +12,8 @@ export default async function CLITokenPage() {
     redirect('/api/auth/signin?callbackUrl=/cli-token')
   }
 
-  // Extract the actual JWT from the session cookie
-  // NextAuth stores the JWT in this cookie when using jwt strategy
   const cookieStore = cookies()
-  const token =
-    cookieStore.get("__Secure-next-auth.session-token")?.value ??
-    cookieStore.get("next-auth.session-token")?.value ??
-    ""
+  const token = extractSessionToken(cookieStore)
 
   return (
     <div className="min-h-screen bg-gray-50">
