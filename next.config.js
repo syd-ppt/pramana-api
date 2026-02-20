@@ -3,8 +3,10 @@ const nextConfig = {
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) {
-      console.warn('NEXT_PUBLIC_API_URL not set — API rewrites disabled (set in Vercel project settings)');
-      return [];
+      if (process.env.VERCEL || process.env.CI) {
+        return [];
+      }
+      throw new Error('NEXT_PUBLIC_API_URL not set — required for local development. Set it in .env.local');
     }
     return [
       { source: '/api/submit', destination: `${apiUrl}/api/submit` },

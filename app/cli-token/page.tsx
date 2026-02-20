@@ -57,9 +57,9 @@ export default async function CLITokenPage() {
               Security Notice
             </h2>
             <p className="text-sm text-amber-950">
-              This token grants access to your account. Keep it secret and don&apos;t
-              share it publicly. You can logout anytime using{" "}
-              <code className="bg-amber-900 text-amber-50 px-2 py-1 rounded font-mono text-sm">pramana logout</code>
+              This token is your session credential — treat it like a password.
+              It expires when your browser session ends. Do not share it publicly.
+              Revoke access anytime by signing out.
             </p>
           </div>
 
