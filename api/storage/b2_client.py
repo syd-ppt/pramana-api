@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from io import BytesIO
 
@@ -13,6 +14,8 @@ class B2Client:
 
     Creates lightweight connection per request, suitable for Vercel serverless functions.
     """
+
+    MAX_SCAN_FILES = 1000
 
     def __init__(self):
         self.key_id = os.getenv("B2_APPLICATION_KEY_ID") or os.getenv("B2_KEY_ID")
@@ -74,7 +77,12 @@ class B2Client:
 
         def list_and_delete():
             deleted = 0
+            scanned = 0
             for file_version, _ in self.bucket.ls(recursive=True):
+                scanned += 1
+                if scanned > self.MAX_SCAN_FILES:
+                    logging.warning("GDPR deletion scan capped at %d files for user %s", self.MAX_SCAN_FILES, user_id)
+                    break
                 if f"/user={user_id}/" in file_version.file_name:
                     self.api.delete_file_version(file_version.id_, file_version.file_name)
                     deleted += 1
@@ -96,7 +104,12 @@ class B2Client:
 
         def copy_and_delete():
             moved = 0
+            scanned = 0
             for file_version, _ in self.bucket.ls(recursive=True):
+                scanned += 1
+                if scanned > self.MAX_SCAN_FILES:
+                    logging.warning("GDPR deletion scan capped at %d files for user %s", self.MAX_SCAN_FILES, from_user_id)
+                    break
                 if f"/user={from_user_id}/" not in file_version.file_name:
                     continue
 
