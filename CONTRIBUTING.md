@@ -16,6 +16,29 @@ npm install
 npm run dev
 ```
 
+## ⚠️ Before You Open a PR — Read This
+
+### How This System Works
+
+Pramana's backend is intentionally minimal. The entire data path is:
+
+1. **CLI** ([pramana](https://github.com/syd-ppt/pramana)) runs prompts against LLM APIs and submits results
+2. **API** (this repo) writes each submission as a single Parquet file to Backblaze B2 — no database, no cache, no queue
+3. **Dashboard** (this repo) reads those Parquet files back, aggregates server-side with PyArrow, and renders charts
+
+That's it. If your PR introduces additional infrastructure (databases, caches, task queues, ORMs), it almost certainly doesn't fit.
+
+### Two Repos, Separate Responsibilities
+
+| Repo | Scope |
+|------|-------|
+| **[pramana](https://github.com/syd-ppt/pramana)** | CLI — prompt execution, eval logic, output formatting, submission client |
+| **[pramana-api](https://github.com/syd-ppt/pramana-api)** *(this repo)* | Server — submission endpoint, B2 storage, PyArrow aggregation, Next.js dashboard |
+
+**PRs that add CLI features, evaluation logic, or prompt execution to this repo will be closed.** The reverse also applies.
+
+If you're unsure which repo your change belongs in, open an issue first — happy to point you the right way.
+
 ## Branch Strategy
 
 1. Fork the repository
@@ -52,6 +75,3 @@ Use GitHub Issues. Include:
 - Expected vs actual behavior
 - Environment details (OS, Python/Node version)
 
-## Architecture Note
-
-This repo is the **backend infrastructure + dashboard**. The CLI tool lives at [pramana](https://github.com/syd-ppt/pramana). Do not mix responsibilities.
