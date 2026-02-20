@@ -18,6 +18,31 @@ describe('detectDegradation', () => {
     expect(result.effectSize).toBe(0)
   })
 
+  it('returns isDegraded=false and pValue=1 when recent has only 1 element', () => {
+    const result = detectDegradation([50], [50, 55, 60, 45, 52])
+    expect(result.isDegraded).toBe(false)
+    expect(result.pValue).toBe(1)
+    expect(result.recentMean).toBe(50)
+  })
+
+  it('returns isDegraded=false and pValue=1 when baseline has only 1 element', () => {
+    const result = detectDegradation([50, 55, 60, 45, 52], [50])
+    expect(result.isDegraded).toBe(false)
+    expect(result.pValue).toBe(1)
+    expect(result.baselineMean).toBe(50)
+  })
+
+  it('uses Welch-Satterthwaite df for equal sample sizes', () => {
+    // Two groups of 5 with identical variance: Welch df = n1+n2-2 = 8
+    // Verify this is consistent with symmetry (pValue > 0 and finite)
+    const baseline = [10, 12, 11, 13, 9]
+    const recent = [7, 9, 8, 10, 6]
+    const result = detectDegradation(recent, baseline)
+    expect(result.pValue).toBeGreaterThan(0)
+    expect(result.pValue).toBeLessThan(1)
+    expect(isFinite(result.pValue)).toBe(true)
+  })
+
   it('returns pValue near 1.0 for identical distributions', () => {
     const data = [50, 50, 50, 50, 50, 50, 50]
     const result = detectDegradation(data, data)

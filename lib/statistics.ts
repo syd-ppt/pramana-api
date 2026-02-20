@@ -121,13 +121,22 @@ export function detectDegradation(
     };
   }
 
+  if (recent.length < 2 || baseline.length < 2) {
+    return { isDegraded: false, pValue: 1, effectSize: 0, recentMean: mean(recent), baselineMean: mean(baseline) };
+  }
+
   const recentMean = mean(recent);
   const baselineMean = mean(baseline);
 
   const tStat = tTestTwoSample(recent, baseline, 0);
 
-  // Degrees of freedom for pooled two-sample t-test
-  const df = recent.length + baseline.length - 2;
+  const s1 = standardDeviation(recent);
+  const s2 = standardDeviation(baseline);
+  const n1 = recent.length;
+  const n2 = baseline.length;
+  const v1 = (s1 * s1) / n1;
+  const v2 = (s2 * s2) / n2;
+  const df = (v1 + v2) ** 2 / ((v1 * v1) / (n1 - 1) + (v2 * v2) / (n2 - 1));
   const pValue = (tStat !== null && !isNaN(tStat)) ? tDistributionPValue(tStat, df) : 1;
 
   const pooled = [...recent, ...baseline];
