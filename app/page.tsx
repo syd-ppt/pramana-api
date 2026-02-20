@@ -5,20 +5,20 @@ import DriftChart from '@/components/DriftChart';
 import FilterPanel, { Filters } from '@/components/FilterPanel';
 import StatisticalBadge from '@/components/StatisticalBadge';
 import Button from '@/components/Button';
-import { detectDegradation } from '@/lib/statistics';
+import { detectDegradation, type DegradationResult } from '@/lib/statistics';
+import type { ChartDataPoint, ChartApiResponse } from '@/lib/types';
 
 export default function Home() {
   const [filters, setFilters] = useState<Filters>({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     selectedModels: [],
-    tier: 'all',
   });
 
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
-  const [degradationResults, setDegradationResults] = useState<Map<string, any>>(new Map());
+  const [degradationResults, setDegradationResults] = useState<Map<string, DegradationResult>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +44,7 @@ export default function Home() {
           throw new Error(`API error: ${res.status}`);
         }
 
-        const json = await res.json();
+        const json = await res.json() as ChartApiResponse;
         if (cancelled) return;
 
         setChartData(json.data || []);
@@ -56,10 +56,10 @@ export default function Home() {
         }
 
         // Degradation detection per model
-        const results = new Map();
+        const results = new Map<string, DegradationResult>();
         const activeModels = filters.selectedModels.length > 0 ? filters.selectedModels : json.models || [];
         activeModels.forEach((model: string) => {
-          const modelData = (json.data || []).map((d: any) => d[model] || 0);
+          const modelData = (json.data || []).map((d: ChartDataPoint) => (d[model] as number) || 0);
           const recent = modelData.slice(-7);
           const baseline = modelData.slice(-14, -7);
           if (recent.length >= 7 && baseline.length >= 7) {

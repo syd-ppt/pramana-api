@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import CopyButton from "@/components/CopyButton"
 import Button from "@/components/Button"
 
@@ -11,10 +12,13 @@ export default async function CLITokenPage() {
     redirect('/api/auth/signin?callbackUrl=/cli-token')
   }
 
-  // Get the session token (JWT)
-  // In production, you'd want to generate a long-lived API token here
-  // For now, we'll use the session token directly
-  const token = session.user ? JSON.stringify(session) : ""
+  // Extract the actual JWT from the session cookie
+  // NextAuth stores the JWT in this cookie when using jwt strategy
+  const cookieStore = cookies()
+  const token =
+    cookieStore.get("__Secure-next-auth.session-token")?.value ??
+    cookieStore.get("next-auth.session-token")?.value ??
+    ""
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -53,9 +57,9 @@ export default async function CLITokenPage() {
               Security Notice
             </h2>
             <p className="text-sm text-amber-950">
-              This token grants access to your account. Keep it secret and don't
-              share it publicly. You can logout anytime using{" "}
-              <code className="bg-amber-900 text-amber-50 px-2 py-1 rounded font-mono text-sm">pramana logout</code>
+              This token is your session credential — treat it like a password.
+              It expires when your browser session ends. Do not share it publicly.
+              Revoke access anytime by signing out.
             </p>
           </div>
 

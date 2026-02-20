@@ -1,18 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
-    // DuckDB-WASM requires .wasm files
-    config.experiments = {
-      ...config.experiments,
-      asyncWebAssembly: true,
-    };
-    return config;
-  },
   async rewrites() {
-    if (!process.env.NEXT_PUBLIC_API_URL) {
-      throw new Error('NEXT_PUBLIC_API_URL environment variable is required');
-    }
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      if (process.env.VERCEL || process.env.CI) {
+        return [];
+      }
+      throw new Error('NEXT_PUBLIC_API_URL not set — required for local development. Set it in .env.local');
+    }
     return [
       { source: '/api/submit', destination: `${apiUrl}/api/submit` },
       { source: '/api/health', destination: `${apiUrl}/api/health` },

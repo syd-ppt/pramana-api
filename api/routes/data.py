@@ -1,11 +1,12 @@
 """Data query API routes - Dashboard data aggregation."""
+from __future__ import annotations
 
 import asyncio
+import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
-from typing import Optional
 
 import pyarrow.parquet as pq
 from fastapi import APIRouter, Query
@@ -13,12 +14,13 @@ from fastapi import APIRouter, Query
 from api.storage.b2_client import B2Client
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _executor = ThreadPoolExecutor(max_workers=16)
 
 
-def _download_file(bucket, file_name: str) -> list[dict]:
-    """Download and parse a single parquet file from B2. Returns list of row dicts."""
+def _download_file(bucket, file_name: str) -> dict[str, list]:
+    """Download and parse a single parquet file from B2. Returns column dict."""
     buf = BytesIO()
     bucket.download_file_by_name(file_name).save(buf)
     buf.seek(0)
@@ -44,7 +46,7 @@ def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
                 if file_version.file_name.endswith(".parquet"):
                     matching_files.append(file_version.file_name)
         except Exception:
-            pass  # No files for this date
+            logger.debug("No files for prefix %s", prefix)
         current += timedelta(days=1)
 
     if not matching_files:
@@ -62,34 +64,37 @@ def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
                 row_dict = future.result()
                 for col, values in row_dict.items():
                     combined[col].extend(values)
-            except Exception as e:
-                print(f"Failed to download {futures[future]}: {e}")
+            except Exception:
+                logger.exception("Failed to download %s", futures[future])
 
     return dict(combined)
 
 
+def _list_and_download_with_client(start_date: str, end_date: str) -> dict:
+    """Instantiate B2Client and run _list_and_download inside executor."""
+    b2_client = B2Client()
+    return _list_and_download(b2_client.bucket, start_date, end_date)
+
+
 @router.get("/data/chart")
 async def get_chart_data(
-    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    models: Optional[str] = Query(None, description="Comma-separated model IDs"),
+    start_date: str | None = Query(None, description="YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="YYYY-MM-DD"),
+    models: str | None = Query(None, description="Comma-separated model IDs"),
 ):
     """Get aggregated chart data from B2 parquet files.
 
     Returns daily submission counts per model, plus list of available models.
     """
     if not end_date:
-        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+        end_date = datetime.now(UTC).strftime("%Y-%m-%d")
     if not start_date:
-        start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+        start_date = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    b2_client = B2Client()
-
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(
         _executor,
-        _list_and_download,
-        b2_client.bucket,
+        _list_and_download_with_client,
         start_date,
         end_date,
     )
@@ -129,9 +134,9 @@ async def get_chart_data(
         counts[date_str][model] += 1
 
     # Build chart data
-    chart_data = []
+    chart_data: list[dict[str, str | int]] = []
     for date in sorted(counts.keys()):
-        row = {"date": date}
+        row: dict[str, str | int] = {"date": date}
         row.update(counts[date])
         chart_data.append(row)
 
