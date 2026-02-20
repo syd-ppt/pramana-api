@@ -220,14 +220,14 @@ async def test_stats_requires_auth(client):
 
 
 @pytest.mark.anyio
-async def test_stats_rejects_invalid_token(client):
+async def test_stats_rejects_invalid_token(client, monkeypatch):
     """Stats endpoint rejects invalid Bearer token."""
+    monkeypatch.setenv("NEXTAUTH_SECRET", "test-secret-for-jwt-validation")
     response = await client.get(
         "/api/user/me/stats",
         headers={"Authorization": "Bearer invalid-token"},
     )
-    # Without NEXTAUTH_SECRET set, returns 500; with it set, returns 401
-    assert response.status_code in (401, 500)
+    assert response.status_code == 401
 
 
 # ── Data endpoint logs errors instead of swallowing silently ─────────
@@ -277,8 +277,8 @@ def _make_mock_download(parquet_buf: BytesIO) -> MagicMock:
 
 
 def test_stats_aggregates_parquet_data():
-    """Stats _gather_stats correctly aggregates submissions from multiple Parquet files."""
-    from api.storage.b2_client import B2Client
+    """gather_user_stats correctly aggregates submissions from multiple Parquet files."""
+    from api.routes.user import gather_user_stats
 
     ts1 = datetime(2025, 3, 10, 12, 0, 0)
     ts2 = datetime(2025, 3, 11, 14, 30, 0)
@@ -309,38 +309,9 @@ def test_stats_aggregates_parquet_data():
     }
     mock_bucket.download_file_by_name.side_effect = lambda name: downloads[name]
 
-    with patch.object(B2Client, "__init__", lambda _self: None):
-        client = B2Client()
-        client.bucket = mock_bucket
-        client.api = MagicMock()
+    stats = gather_user_stats(mock_bucket, "testuser")
 
-    # Replicate _gather_stats aggregation logic with mock client
-    target_segment = "/user=testuser/"
-
-    models_seen: set[str] = set()
-    total = 0
-    latest_ts = None
-    for file_version, _ in client.bucket.ls(recursive=True):
-        if target_segment not in f"/{file_version.file_name}":
-            continue
-        if not file_version.file_name.endswith(".parquet"):
-            continue
-        buf = BytesIO()
-        client.bucket.download_file_by_name(file_version.file_name).save(buf)
-        buf.seek(0)
-        table = pq.read_table(buf)
-        data = table.to_pydict()
-        total += len(data.get("model_id", []))
-        for mid in data.get("model_id", []):
-            models_seen.add(mid)
-        for ts in data.get("timestamp", []):
-            dt = ts.as_py() if hasattr(ts, "as_py") else ts
-            if latest_ts is None or dt > latest_ts:
-                latest_ts = dt
-
-    # Verify aggregation
-    assert total == 5, f"Expected 5 submissions, got {total}"
-    assert models_seen == {"gpt-4", "claude-3"}
-    assert latest_ts == ts3
-    # file_other should not have been downloaded
+    assert stats["total_submissions"] == 5
+    assert set(stats["models_tested"]) == {"gpt-4", "claude-3"}
+    assert stats["last_submission"] is not None
     assert mock_bucket.download_file_by_name.call_count == 2
