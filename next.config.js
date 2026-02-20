@@ -1,13 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
-    // DuckDB-WASM requires .wasm files
-    config.experiments = {
-      ...config.experiments,
-      asyncWebAssembly: true,
-    };
-    return config;
-  },
   async rewrites() {
     if (!process.env.NEXT_PUBLIC_API_URL) {
       throw new Error('NEXT_PUBLIC_API_URL environment variable is required');

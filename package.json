@@ -9,7 +9,12 @@
   },
   "homepage": "https://github.com/syd-ppt/pramana-api",
   "license": "MIT",
-  "keywords": ["llm", "drift-detection", "evaluation", "dashboard"],
+  "keywords": [
+    "llm",
+    "drift-detection",
+    "evaluation",
+    "dashboard"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,9 +22,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.991.0",
-    "@aws-sdk/s3-request-presigner": "^3.991.0",
-    "@duckdb/duckdb-wasm": "^1.28.0",
     "date-fns": "^3.0.0",
     "next": "^14.1.0",
     "next-auth": "^4.24.5",
@@ -35,6 +37,7 @@
     "autoprefixer": "^10",
     "postcss": "^8",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }
