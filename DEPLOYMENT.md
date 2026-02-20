@@ -32,9 +32,10 @@ Required on Vercel:
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` - Google OAuth
 
 **FastAPI (Backend):**
-- `B2_KEY_ID` - Backblaze B2 key
-- `B2_APPLICATION_KEY` - B2 secret
-- `B2_BUCKET_NAME` - Storage bucket name
+- `R2_ENDPOINT_URL` - R2 S3-compatible endpoint
+- `R2_ACCESS_KEY_ID` - R2 API token access key
+- `R2_SECRET_ACCESS_KEY` - R2 API token secret
+- `R2_BUCKET_NAME` - Storage bucket name
 
 ### Deployment Process
 

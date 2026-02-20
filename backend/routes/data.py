@@ -11,7 +11,7 @@ from io import BytesIO
 import pyarrow.parquet as pq
 from fastapi import APIRouter, Query
 
-from backend.storage.b2_client import B2Client
+from backend.storage.b2_client import StorageClient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -19,17 +19,15 @@ logger = logging.getLogger(__name__)
 _executor = ThreadPoolExecutor(max_workers=16)
 
 
-def _download_file(bucket, file_name: str) -> dict[str, list]:
-    """Download and parse a single parquet file from B2. Returns column dict."""
-    buf = BytesIO()
-    bucket.download_file_by_name(file_name).save(buf)
-    buf.seek(0)
-    table = pq.read_table(buf)
+def _download_file(client: StorageClient, key: str) -> dict[str, list]:
+    """Download and parse a single parquet file. Returns column dict."""
+    data = client.download_file(key)
+    table = pq.read_table(BytesIO(data))
     return table.to_pydict()
 
 
-def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
-    """List B2 files matching date range and download them.
+def _list_and_download(client: StorageClient, start_date: str, end_date: str) -> dict:
+    """List files matching date range and download them.
 
     Returns combined column dict: {col_name: [values...]}.
     """
@@ -37,24 +35,25 @@ def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
     end = datetime.strptime(end_date, "%Y-%m-%d")
 
     # Collect matching file names by iterating date prefixes
-    matching_files = []
+    matching_files: list[str] = []
     current = start
     while current <= end:
         prefix = f"year={current.year}/month={current.month:02d}/day={current.day:02d}/"
-        for file_version, _ in bucket.ls(folder_to_list=prefix, recursive=True):
-            if file_version.file_name.endswith(".parquet"):
-                matching_files.append(file_version.file_name)
+        matching_files.extend(
+            k for k in client.list_files(prefix=prefix)
+            if k.endswith(".parquet")
+        )
         current += timedelta(days=1)
 
     if not matching_files:
         return {}
 
-    # Download in parallel, collect column dicts
+    # Download in parallel
     combined: dict[str, list] = defaultdict(list)
     with ThreadPoolExecutor(max_workers=16) as pool:
         futures = {
-            pool.submit(_download_file, bucket, fname): fname
-            for fname in matching_files
+            pool.submit(_download_file, client, key): key
+            for key in matching_files
         }
         for future in as_completed(futures):
             try:
@@ -68,9 +67,9 @@ def _list_and_download(bucket, start_date: str, end_date: str) -> dict:
 
 
 def _list_and_download_with_client(start_date: str, end_date: str) -> dict:
-    """Instantiate B2Client and run _list_and_download inside executor."""
-    b2_client = B2Client()
-    return _list_and_download(b2_client.bucket, start_date, end_date)
+    """Instantiate client and run _list_and_download inside executor."""
+    client = StorageClient()
+    return _list_and_download(client, start_date, end_date)
 
 
 @router.get("/data/chart")
@@ -79,7 +78,7 @@ async def get_chart_data(
     end_date: str | None = Query(None, description="YYYY-MM-DD"),
     models: str | None = Query(None, description="Comma-separated model IDs"),
 ):
-    """Get aggregated chart data from B2 parquet files.
+    """Get aggregated chart data from parquet files.
 
     Returns daily submission counts per model, plus list of available models.
     """
@@ -119,7 +118,6 @@ async def get_chart_data(
         if model_filter and model not in model_filter:
             continue
 
-        # Get date string from timestamp
         ts = timestamps[i]
         if hasattr(ts, "strftime"):
             date_str = ts.strftime("%Y-%m-%d")
@@ -130,7 +128,6 @@ async def get_chart_data(
 
         counts[date_str][model] += 1
 
-    # Build chart data
     chart_data: list[dict[str, str | int]] = []
     for date in sorted(counts.keys()):
         row: dict[str, str | int] = {"date": date}

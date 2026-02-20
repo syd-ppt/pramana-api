@@ -58,15 +58,16 @@ async def root():
 @app.get("/api/health")
 async def health():
     """Health check for load balancers."""
-    b2_configured = bool(
-        (os.getenv("B2_KEY_ID") or os.getenv("B2_APPLICATION_KEY_ID"))
-        and os.getenv("B2_APPLICATION_KEY")
-        and os.getenv("B2_BUCKET_NAME")
+    storage_configured = bool(
+        os.getenv("R2_ENDPOINT_URL")
+        and os.getenv("R2_ACCESS_KEY_ID")
+        and os.getenv("R2_SECRET_ACCESS_KEY")
+        and os.getenv("R2_BUCKET_NAME")
     )
 
     return {
         "status": "healthy",
-        "b2_configured": b2_configured,
+        "storage_configured": storage_configured,
     }
 
 

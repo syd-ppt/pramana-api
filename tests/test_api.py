@@ -448,21 +448,21 @@ class TestValidateToken:
         assert "userId" in exc_info.value.detail
 
 
-# ── Health endpoint: b2_configured reflects env ────────────────────
+# ── Health endpoint: storage_configured reflects env ───────────────
 
 
 @pytest.mark.anyio
-async def test_health_b2_not_configured_without_env(client, monkeypatch):
-    """Health endpoint reports b2_configured=false when B2 env vars are missing."""
-    monkeypatch.delenv("B2_KEY_ID", raising=False)
-    monkeypatch.delenv("B2_APPLICATION_KEY_ID", raising=False)
-    monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
-    monkeypatch.delenv("B2_BUCKET_NAME", raising=False)
+async def test_health_storage_not_configured_without_env(client, monkeypatch):
+    """Health endpoint reports storage_configured=false when R2 env vars are missing."""
+    monkeypatch.delenv("R2_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("R2_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("R2_BUCKET_NAME", raising=False)
     response = await client.get("/api/health")
     data = response.json()
-    assert data["b2_configured"] is False, (
-        f"b2_configured should be false without B2 env vars, got {data['b2_configured']}. "
-        "Check api/main.py health() B2 env var check logic."
+    assert data["storage_configured"] is False, (
+        f"storage_configured should be false without R2 env vars, got {data['storage_configured']}. "
+        "Check backend/main.py health() R2 env var check logic."
     )
 
 

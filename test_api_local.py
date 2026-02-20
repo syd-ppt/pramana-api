@@ -24,10 +24,10 @@ def test_imports():
         print(f"  ✗ pyarrow: {e}")
 
     try:
-        from b2sdk.v2 import B2Api
-        print("  ✓ b2sdk")
+        import boto3
+        print("  ✓ boto3")
     except ImportError as e:
-        print(f"  ✗ b2sdk: {e}")
+        print(f"  ✗ boto3: {e}")
 
     try:
         import jwt
@@ -35,26 +35,27 @@ def test_imports():
     except ImportError as e:
         print(f"  ✗ pyjwt: {e}")
 
-def test_b2_client():
-    """Test B2Client initialization."""
-    print("\nTesting B2Client...")
+def test_storage_client():
+    """Test StorageClient initialization."""
+    print("\nTesting StorageClient...")
     import os
 
     # Check env vars
-    print(f"  B2_KEY_ID: {'SET' if os.getenv('B2_KEY_ID') else 'NOT SET'}")
-    print(f"  B2_APPLICATION_KEY: {'SET' if os.getenv('B2_APPLICATION_KEY') else 'NOT SET'}")
-    print(f"  B2_BUCKET_NAME: {os.getenv('B2_BUCKET_NAME', 'NOT SET')}")
+    print(f"  R2_ENDPOINT_URL: {'SET' if os.getenv('R2_ENDPOINT_URL') else 'NOT SET'}")
+    print(f"  R2_ACCESS_KEY_ID: {'SET' if os.getenv('R2_ACCESS_KEY_ID') else 'NOT SET'}")
+    print(f"  R2_SECRET_ACCESS_KEY: {'SET' if os.getenv('R2_SECRET_ACCESS_KEY') else 'NOT SET'}")
+    print(f"  R2_BUCKET_NAME: {os.getenv('R2_BUCKET_NAME', 'NOT SET')}")
 
-    if not os.getenv('B2_KEY_ID') or not os.getenv('B2_APPLICATION_KEY'):
-        print("  ⚠ Skipping B2 test - credentials not set")
+    if not os.getenv('R2_ENDPOINT_URL') or not os.getenv('R2_ACCESS_KEY_ID'):
+        print("  ⚠ Skipping storage test - credentials not set")
         return
 
     try:
-        from backend.storage.b2_client import B2Client
-        client = B2Client()
-        print("  ✓ B2Client initialized successfully")
+        from backend.storage.b2_client import StorageClient
+        client = StorageClient()
+        print("  ✓ StorageClient initialized successfully")
     except Exception as e:
-        print(f"  ✗ B2Client failed: {e}")
+        print(f"  ✗ StorageClient failed: {e}")
 
 def test_api_route():
     """Test the submit route handler."""
@@ -85,7 +86,7 @@ def main():
     print("=" * 60)
 
     test_imports()
-    test_b2_client()
+    test_storage_client()
     test_api_route()
 
     print("\n" + "=" * 60)

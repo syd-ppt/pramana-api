@@ -15,7 +15,7 @@ from backend.models.schemas import (
     SubmissionRequest,
     SubmissionResponse,
 )
-from backend.storage.b2_client import B2Client
+from backend.storage.b2_client import StorageClient
 
 router = APIRouter()
 
@@ -132,10 +132,10 @@ def _get_schema():
     return _PARQUET_SCHEMA
 
 
-async def write_records_to_b2(records: list[dict]) -> list[str]:
-    """Write records to B2 as a single Parquet file.
+async def write_records(records: list[dict]) -> list[str]:
+    """Write records as a single Parquet file to object storage.
 
-    Batches all rows into one file to minimize B2 transactions.
+    Batches all rows into one file to minimize storage transactions.
     Returns list of record IDs.
     """
     import pyarrow as pa
@@ -145,7 +145,7 @@ async def write_records_to_b2(records: list[dict]) -> list[str]:
     if not records:
         return []
 
-    b2_client = B2Client()
+    client = StorageClient()
 
     # Assign IDs
     record_ids = []
@@ -171,7 +171,7 @@ async def write_records_to_b2(records: list[dict]) -> list[str]:
     pq.write_table(table, buffer, compression="ZSTD", compression_level=9)
 
     buffer.seek(0)
-    await b2_client.upload_file(key, buffer.read())
+    await client.upload_file(key, buffer.read())
 
     return record_ids
 
@@ -200,12 +200,12 @@ async def submit_result(
     submission: SubmissionRequest,
     authorization: str | None = Header(None)
 ):
-    """Submit a single test result. Writes one Parquet file to B2."""
+    """Submit a single test result."""
     user_id = validate_token(authorization)
     now = datetime.now(UTC)
     record, output_hash = _build_record(submission, user_id, now)
 
-    record_ids = await write_records_to_b2([record])
+    record_ids = await write_records([record])
 
     return SubmissionResponse(
         status="accepted",
@@ -230,7 +230,7 @@ async def submit_batch(
         records.append(record)
         hashes.append(output_hash)
 
-    record_ids = await write_records_to_b2(records)
+    record_ids = await write_records(records)
 
     return {
         "status": "completed",

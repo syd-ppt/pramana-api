@@ -11,7 +11,7 @@ Users run a standard set of prompts against any model using the [Pramana CLI](ht
 ## Architecture
 
 ```
-Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
+Public CLI (pramana) → Vercel API → R2 Storage → Vercel Dashboard
                           ↓            ↓              ↓
                       Serverless    Parquet      Next.js + PyArrow
                       Functions     (ZSTD)       Aggregation
@@ -22,7 +22,7 @@ Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
 - `app/` - Next.js dashboard
 - `docs/` - Architecture documentation
 
-**Cost: $0/month** (Vercel free tier + B2 ~$0.03/month)
+**Cost: $0/month** (Vercel free tier + R2 $0 egress)
 
 ---
 
@@ -30,7 +30,7 @@ Public CLI (pramana) → Vercel API → B2 Storage → Vercel Dashboard
 
 - ✅ **Serverless API** - FastAPI on Vercel (zero cost)
 - ✅ **Next.js Dashboard** - Real-time drift visualization
-- ✅ **B2 Storage** - Cost-effective Parquet storage
+- ✅ **R2 Storage** - Cost-effective Parquet storage with zero egress fees
 - ✅ **User Authentication** - GitHub/Google OAuth via NextAuth.js
 - ✅ **Personalized Tracking** - "You vs Crowd" statistics
 - ✅ **GDPR Compliant** - Full deletion or anonymization options
@@ -55,7 +55,7 @@ cp .env.example .env
 ```
 
 **Required:**
-- `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME` - B2 storage
+- `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - R2 storage
 - `NEXTAUTH_SECRET` - Generate with `openssl rand -base64 32`
 - `NEXTAUTH_URL` - Your Vercel deployment URL
 - `GITHUB_ID`, `GITHUB_SECRET` - GitHub OAuth app
@@ -63,29 +63,24 @@ cp .env.example .env
 
 See the OAuth provider docs for setup instructions.
 
-### 3. Create B2 Bucket
+### 3. Create R2 Bucket
 
-**Via Web Console:**
-1. Go to https://www.backblaze.com/b2/buckets.html
-2. Create new bucket: `your-bucket-name`
-3. Privacy: **Private** (we'll set public read via CORS)
-4. Enable CORS:
+1. Go to **Cloudflare Dashboard** → **R2 Object Storage**
+2. Click **Create bucket** → name it `your-bucket-name`
+3. Under **Settings → CORS Policy**, add:
    ```json
    [
      {
-       "corsRuleName": "allowDashboard",
-       "allowedOrigins": ["https://yourdomain.vercel.app"],
-       "allowedOperations": ["s3_get"],
-       "allowedHeaders": ["*"],
-       "maxAgeSeconds": 3600
+       "AllowedOrigins": ["https://yourdomain.vercel.app"],
+       "AllowedMethods": ["GET"],
+       "AllowedHeaders": ["*"],
+       "MaxAgeSeconds": 3600
      }
    ]
    ```
-
-**Via B2 CLI:**
-```bash
-b2 create-bucket your-bucket-name allPrivate
-```
+4. Go to **R2 → Manage R2 API Tokens** → **Create API token**
+5. Grant **Object Read & Write** permission scoped to your bucket
+6. Copy the **Access Key ID**, **Secret Access Key**, and **Endpoint URL**
 
 ### 4. Run Locally
 
@@ -127,10 +122,11 @@ Vercel will:
 Set in Vercel dashboard or CLI:
 
 ```bash
-# B2 Storage
-vercel env add B2_KEY_ID
-vercel env add B2_APPLICATION_KEY
-vercel env add B2_BUCKET_NAME
+# R2 Storage
+vercel env add R2_ENDPOINT_URL
+vercel env add R2_ACCESS_KEY_ID
+vercel env add R2_SECRET_ACCESS_KEY
+vercel env add R2_BUCKET_NAME
 
 # NextAuth (Authentication)
 vercel env add NEXTAUTH_URL
@@ -145,9 +141,10 @@ vercel env add CORS_ORIGINS
 ```
 
 **Values:**
-- `B2_KEY_ID`: Your Backblaze application key ID
-- `B2_APPLICATION_KEY`: Your Backblaze application key
-- `B2_BUCKET_NAME`: Your B2 bucket name
+- `R2_ENDPOINT_URL`: Your Cloudflare R2 S3-compatible endpoint
+- `R2_ACCESS_KEY_ID`: Your R2 API token access key ID
+- `R2_SECRET_ACCESS_KEY`: Your R2 API token secret access key
+- `R2_BUCKET_NAME`: Your R2 bucket name
 - `NEXTAUTH_URL`: Your deployment URL
 - `NEXTAUTH_SECRET`: Generate with `openssl rand -base64 32`
 - `GITHUB_ID`, `GITHUB_SECRET`: From GitHub OAuth app
@@ -266,15 +263,14 @@ Health check endpoint.
 - Analytics: Included in free tier
 - Function metrics: Execution time, errors
 
-**B2 Usage:**
-```bash
-b2 get-bucket your-bucket-name
-```
+**R2 Usage:**
+Check storage metrics in **Cloudflare Dashboard → R2 → your bucket → Metrics**.
 
 **Costs (monthly):**
 - Vercel: **$0** (free tier: 100GB bandwidth, 100k function invocations)
-- B2 Storage: **~$0.005/GB**
-- B2 Bandwidth: **Free** (first 3x storage size)
+- R2 Storage: **~$0.015/GB** (10GB free)
+- R2 Egress: **$0** (zero egress fees)
+- R2 Operations: **1M Class B reads free, 10M Class A writes free**
 
 **Total: < $1/month for 10K submissions**
 
@@ -284,16 +280,17 @@ b2 get-bucket your-bucket-name
 
 **API returns 500:**
 - Check environment variables in Vercel dashboard
-- Verify B2 credentials are correct
+- Verify R2 credentials are correct
 - Check Vercel function logs
 
 **CORS errors:**
 - Update `CORS_ORIGINS` env var in Vercel
 - Match exact domain (include https://)
 
-**B2 upload fails:**
-- Verify bucket name matches `B2_BUCKET_NAME`
-- Check B2 key has write permissions
+**R2 upload fails:**
+- Verify bucket name matches `R2_BUCKET_NAME`
+- Check R2 API token has write permissions
+- Verify `R2_ENDPOINT_URL` is correct
 - Ensure bucket is not public-read (use CORS instead)
 
 ---
@@ -306,9 +303,9 @@ b2 get-bucket your-bucket-name
 - [x] JWT-based authentication (NextAuth.js)
 - [x] OAuth providers (GitHub, Google)
 - [x] GDPR-compliant data deletion
-- [x] User-partitioned B2 storage
-- [ ] Enable B2 bucket encryption
-- [ ] Rotate B2 keys regularly
+- [x] User-partitioned object storage
+- [ ] Enable R2 bucket encryption
+- [ ] Rotate R2 keys regularly
 - [ ] Add session timeout policies
 
 ---
@@ -317,12 +314,12 @@ b2 get-bucket your-bucket-name
 
 **Backup data:**
 ```bash
-# Download all Parquet files
-b2 sync b2://your-bucket-name ./backup
+# Download all Parquet files (using AWS CLI with R2 endpoint)
+aws s3 sync s3://your-bucket-name ./backup --endpoint-url $R2_ENDPOINT_URL
 ```
 
 **Clear old data (optional):**
-Set B2 lifecycle rules to delete files after 365 days.
+Set R2 lifecycle rules to delete files after 365 days (Cloudflare Dashboard → R2 → bucket → Settings).
 
 ---
 
@@ -332,8 +329,8 @@ Set B2 lifecycle rules to delete files after 365 days.
 |---------|-------------------|--------------|
 | API Hosting | $5/month | **$0/month** |
 | Dashboard | Vercel free | **$0/month** |
-| Storage (B2) | $0.03/month | **$0.03/month** |
-| **Total** | **$5/month** | **$0.03/month** |
+| Storage (R2) | $0.03/month | **$0.00/month** |
+| **Total** | **$5/month** | **$0.00/month** |
 
 **167x cost reduction!** 🎉
 

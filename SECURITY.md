@@ -21,6 +21,6 @@ Only the latest version on `main` is actively maintained.
 - OAuth providers (GitHub, Google) — no password storage
 - Rate limiting (60 req/min per IP)
 - CORS restricted to deployment domain
-- B2 bucket is private; all reads go through server-side API
+- Storage bucket is private; all reads go through server-side API
 - User-partitioned storage paths
 - GDPR-compliant deletion endpoint

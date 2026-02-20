@@ -1,4 +1,4 @@
-"""Backblaze B2 storage client - Serverless-optimized."""
+"""Cloudflare R2 storage client — S3-compatible, serverless-optimized."""
 from __future__ import annotations
 
 import asyncio
@@ -6,133 +6,112 @@ import logging
 import os
 from io import BytesIO
 
-from b2sdk.v2 import B2Api, InMemoryAccountInfo
+import boto3
 
 
-class B2Client:
-    """Backblaze B2 uploader for serverless environments.
+class StorageClient:
+    """S3-compatible object storage client for Cloudflare R2.
 
-    Creates lightweight connection per request, suitable for Vercel serverless functions.
+    Drop-in replacement for the old B2Client. All consumers use the same
+    public API: upload_file, list_files, download_file, delete_file.
     """
 
     MAX_SCAN_FILES = 1000
 
     def __init__(self):
-        self.key_id = os.getenv("B2_APPLICATION_KEY_ID") or os.getenv("B2_KEY_ID")
-        self.app_key = os.getenv("B2_APPLICATION_KEY")
-        self.bucket_name = os.getenv("B2_BUCKET_NAME")
+        self.endpoint_url = os.getenv("R2_ENDPOINT_URL")
+        self.access_key = os.getenv("R2_ACCESS_KEY_ID")
+        self.secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+        self.bucket_name = os.getenv("R2_BUCKET_NAME")
 
         if not self.bucket_name:
-            raise ValueError(
-                "B2_BUCKET_NAME not set. Set the B2_BUCKET_NAME env var."
-            )
+            raise ValueError("R2_BUCKET_NAME not set.")
+        if not self.endpoint_url:
+            raise ValueError("R2_ENDPOINT_URL not set.")
+        if not self.access_key or not self.secret_key:
+            raise ValueError("R2 credentials not set. Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.")
 
-        if not self.key_id or not self.app_key:
-            raise ValueError(
-                "B2 credentials not set. Set B2_KEY_ID and B2_APPLICATION_KEY env vars."
-            )
+        self.s3 = boto3.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name="auto",
+        )
 
-        # Initialize API (lightweight operation)
-        self.api = B2Api(InMemoryAccountInfo())
-        self.api.authorize_account("production", self.key_id, self.app_key)
-        self.bucket = self.api.get_bucket_by_name(self.bucket_name)
+    # ── Write ──────────────────────────────────────────────
 
     async def upload_file(self, key: str, data: bytes) -> str:
-        """Upload bytes to B2 and return public URL.
-
-        Args:
-            key: Remote file path/key (e.g., "year=2024/month=01/day=15/file.parquet")
-            data: File content as bytes
-
-        Returns:
-            Public download URL for the uploaded file
-        """
-        # Run synchronous B2 SDK in thread pool to avoid blocking
+        """Upload bytes to R2. Returns the object key."""
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
-            lambda: self.bucket.upload_bytes(
-                data_bytes=data,
-                file_name=key,
-            )
+            lambda: self.s3.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=data,
+            ),
         )
+        return key
 
-        # Return download URL
-        return self.get_public_url(key)
+    # ── Read ───────────────────────────────────────────────
 
-    def get_public_url(self, file_name: str) -> str:
-        """Get public download URL for a file."""
-        return self.api.get_download_url_for_file_name(self.bucket_name, file_name)
+    def list_files(self, prefix: str = "", max_keys: int = 1000) -> list[str]:
+        """List object keys under prefix. Handles pagination."""
+        keys: list[str] = []
+        paginator = self.s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(
+            Bucket=self.bucket_name,
+            Prefix=prefix,
+            PaginationConfig={"MaxItems": max_keys},
+        ):
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+        return keys
+
+    def download_file(self, key: str) -> bytes:
+        """Download object bytes by key."""
+        resp = self.s3.get_object(Bucket=self.bucket_name, Key=key)
+        return resp["Body"].read()
+
+    # ── Delete ─────────────────────────────────────────────
 
     async def delete_user_data(self, user_id: str) -> int:
-        """Delete all files for a specific user (GDPR compliance).
-
-        Args:
-            user_id: User ID to delete data for
-
-        Returns:
-            Number of files deleted
-        """
+        """Delete all files for a user (GDPR). Returns count deleted."""
         loop = asyncio.get_running_loop()
 
-        def list_and_delete():
-            deleted = 0
-            while True:
-                batch_deleted = 0
-                for file_version, _ in self.bucket.ls(recursive=True):
-                    if f"/user={user_id}/" in file_version.file_name:
-                        self.api.delete_file_version(file_version.id_, file_version.file_name)
-                        deleted += 1
-                        batch_deleted += 1
-                        if batch_deleted >= self.MAX_SCAN_FILES:
-                            break
-                if batch_deleted < self.MAX_SCAN_FILES:
-                    break
-                logging.info("GDPR deletion pass completed %d files for user %s, scanning for more", deleted, user_id)
-            return deleted
+        def _delete():
+            keys = self.list_files(max_keys=self.MAX_SCAN_FILES)
+            to_delete = [k for k in keys if f"/user={user_id}/" in k]
+            if not to_delete:
+                return 0
+            self.s3.delete_objects(
+                Bucket=self.bucket_name,
+                Delete={"Objects": [{"Key": k} for k in to_delete]},
+            )
+            return len(to_delete)
 
-        return await loop.run_in_executor(None, list_and_delete)
+        return await loop.run_in_executor(None, _delete)
 
     async def repartition_user_data(self, from_user_id: str, to_user_id: str) -> int:
-        """Move user data to a different partition (for anonymization).
-
-        Args:
-            from_user_id: Source user ID
-            to_user_id: Destination user ID (usually "anonymous")
-
-        Returns:
-            Number of files moved
-        """
+        """Copy files to new user partition, delete originals (GDPR anonymization)."""
         loop = asyncio.get_running_loop()
 
-        def copy_and_delete():
-            moved = 0
-            while True:
-                batch_moved = 0
-                for file_version, _ in self.bucket.ls(recursive=True):
-                    if f"/user={from_user_id}/" not in file_version.file_name:
-                        continue
+        def _move():
+            keys = self.list_files(max_keys=self.MAX_SCAN_FILES)
+            matched = [k for k in keys if f"/user={from_user_id}/" in k]
+            for old_key in matched:
+                new_key = old_key.replace(f"user={from_user_id}/", f"user={to_user_id}/")
+                self.s3.copy_object(
+                    Bucket=self.bucket_name,
+                    CopySource={"Bucket": self.bucket_name, "Key": old_key},
+                    Key=new_key,
+                )
+                self.s3.delete_object(Bucket=self.bucket_name, Key=old_key)
+            return len(matched)
 
-                    download_dest = BytesIO()
-                    self.bucket.download_file_by_name(file_version.file_name).save(download_dest)
+        return await loop.run_in_executor(None, _move)
 
-                    old_path = file_version.file_name
-                    new_path = old_path.replace(f"user={from_user_id}/", f"user={to_user_id}/")
 
-                    download_dest.seek(0)
-                    self.bucket.upload_bytes(
-                        data_bytes=download_dest.read(),
-                        file_name=new_path,
-                    )
-
-                    self.api.delete_file_version(file_version.id_, file_version.file_name)
-                    moved += 1
-                    batch_moved += 1
-                    if batch_moved >= self.MAX_SCAN_FILES:
-                        break
-                if batch_moved < self.MAX_SCAN_FILES:
-                    break
-                logging.info("GDPR anonymization pass completed %d files for user %s, scanning for more", moved, from_user_id)
-            return moved
-
-        return await loop.run_in_executor(None, copy_and_delete)
+# Backward-compatible alias — all imports use `from backend.storage.b2_client import B2Client`
+B2Client = StorageClient

@@ -54,24 +54,24 @@
 │          your-api.vercel.app  (FastAPI)                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  POST /api/submit      - Validate, hash, write to B2           │
-│  GET  /api/data/chart  - Read B2 parquet, aggregate, return JSON│
-│  GET  /api/health      - B2 connectivity check                 │
+│  POST /api/submit      - Validate, hash, write to R2           │
+│  GET  /api/data/chart  - Read R2 parquet, aggregate, return JSON│
+│  GET  /api/health      - Storage connectivity check            │
 │  DELETE /api/user/me   - GDPR: delete or anonymize user data   │
 │  GET  /api/user/me/stats - Per-user submission stats           │
 │                                                                 │
 │  - JWT validation (NEXTAUTH_SECRET, HS256)                     │
 │  - Rate limiting: 60 req/min per IP                            │
-│  - B2 access via b2sdk (server-side, credentials only)         │
+│  - R2 access via boto3 (server-side, credentials only)         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
-          │  b2sdk (private)
+          │  boto3 (private)
           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Backblaze B2 Storage  (allPrivate)             │
+│                  Cloudflare R2 Storage  (private)               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Parquet Files (ZSTD level 9)                 $0.03/month      │
+│  Parquet Files (ZSTD level 9)                 $0 egress        │
 │                                                                 │
 │  year=2025/month=02/day=17/user=abc123def456/                   │
 │  ├─ pramana_20250217_120000_a1b2c3d4.parquet                   │
@@ -80,8 +80,8 @@
 │  year=2025/month=02/day=17/user=anonymous/                      │
 │  └─ pramana_20250217_120100_i9j0k1l2.parquet                   │
 │                                                                 │
-│  - allPrivate bucket (no public read)                           │
-│  - All reads via b2sdk server-side credentials                  │
+│  - Private bucket (no public read)                              │
+│  - All reads via boto3 server-side credentials                  │
 │  - CORS configured for your-app.vercel.app                  │
 │    (pre-signed URL support reserved for future use)             │
 │                                                                 │
@@ -128,19 +128,19 @@ Submissions are proxied by Next.js rewrites to the FastAPI backend.
 |------|---------|
 | `backend/main.py` | FastAPI app, CORS, rate limit middleware |
 | `backend/routes/submit.py` | POST /api/submit, JWT validation, Parquet write |
-| `backend/routes/data.py` | GET /api/data/chart, B2 read, aggregation |
+| `backend/routes/data.py` | GET /api/data/chart, R2 read, aggregation |
 | `backend/routes/user.py` | DELETE /api/user/me, GET /api/user/me/stats |
-| `backend/storage/b2_client.py` | b2sdk wrapper, upload/delete/repartition |
+| `backend/storage/b2_client.py` | S3-compatible storage client (boto3), upload/delete/repartition |
 | `backend/models/schemas.py` | Pydantic request/response models |
 
 **Endpoints:**
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/submit` | Optional JWT | Write single result to B2 |
+| POST | `/api/submit` | Optional JWT | Write single result to R2 |
 | POST | `/api/submit/batch` | Optional JWT | Write multiple results |
 | GET | `/api/data/chart` | None | Aggregated chart data (JSON) |
-| GET | `/api/health` | None | B2 connectivity check |
+| GET | `/api/health` | None | Storage connectivity check |
 | DELETE | `/api/user/me` | Required JWT | Delete or anonymize user data |
 | GET | `/api/user/me/stats` | Required JWT | Per-user submission stats |
 
@@ -150,7 +150,7 @@ Submissions are proxied by Next.js rewrites to the FastAPI backend.
 user_id = validate_token(authorization)  # None if anonymous
 output_hash = sha256(f"{model_id}|{prompt_id}|{output}")
 key = f"year={y}/month={m:02d}/day={d:02d}/user={user_id}/{filename}"
-await b2_client.upload_file(key, parquet_bytes)
+await storage_client.upload_file(key, parquet_bytes)
 ```
 
 **Data query flow (server-side PyArrow):**
@@ -216,7 +216,7 @@ token.userId = userId
 ```
 
 - Deterministic: same OAuth identity always produces same `user_id`
-- 16-char hex string stored in JWT and in B2 partition path
+- 16-char hex string stored in JWT and in R2 partition path
 - `user_id` propagated to FastAPI via `Authorization: Bearer <jwt>` header
 - FastAPI validates with `NEXTAUTH_SECRET` (shared env var, HS256)
 
@@ -232,10 +232,10 @@ token.userId = userId
 
 ---
 
-### 5. Storage (Backblaze B2)
+### 5. Storage (Cloudflare R2)
 
-**Bucket visibility:** `allPrivate` — no public read, all access via b2sdk server-side
-**Cost:** ~$0.005/GB/month
+**Bucket visibility:** `private` — no public read, all access via boto3 server-side
+**Cost:** ~$0.015/GB/month storage, $0 egress, 1M free Class B reads/month
 
 **Partition structure:**
 ```
@@ -265,15 +265,16 @@ token.userId = userId
 
 **Compression:** ZSTD level 9 (~90% size reduction vs raw text)
 
-**CORS:** Configured for `your-app.vercel.app`. Bucket stays private; CORS is reserved for future pre-signed URL support. Current data access is exclusively server-side via b2sdk.
+**CORS:** Configured for `your-app.vercel.app`. Bucket stays private; CORS is reserved for future pre-signed URL support. Current data access is exclusively server-side via boto3.
 
 **Environment variables (FastAPI project):**
 
 | Var | Purpose |
 |-----|---------|
-| `B2_APPLICATION_KEY_ID` or `B2_KEY_ID` | B2 key ID |
-| `B2_APPLICATION_KEY` | B2 application key |
-| `B2_BUCKET_NAME` | Bucket name (required) |
+| `R2_ENDPOINT_URL` | R2 S3-compatible endpoint |
+| `R2_ACCESS_KEY_ID` | R2 API token access key |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
+| `R2_BUCKET_NAME` | Bucket name (required) |
 | `NEXTAUTH_SECRET` | JWT validation (shared with Next.js) |
 | `CORS_ORIGINS` | Comma-separated allowed origins |
 
@@ -296,7 +297,7 @@ token.userId = userId
 
 5. Computes sha256(model_id|prompt_id|output)
 
-6. Writes Parquet to B2:
+6. Writes Parquet to R2:
    └─> year=YYYY/month=MM/day=DD/user={user_id}/pramana_{ts}_{uuid8}.parquet
 
 7. Returns {status: "accepted", id: "uuid", hash: "sha256:..."}
@@ -311,7 +312,7 @@ token.userId = userId
 
 3. Next.js proxy rewrites to your-api.vercel.app/api/data/chart
 
-4. FastAPI lists B2 files for each date in range (by prefix)
+4. FastAPI lists R2 files for each date in range (by prefix)
 
 5. Downloads matching .parquet files in parallel (PyArrow, ThreadPoolExecutor)
 
@@ -342,17 +343,17 @@ DELETE /api/user/me
 |-----------|-------|------|
 | **Vercel (your-app)** | Next.js, bandwidth | **$0.00** |
 | **Vercel (your-app-api)** | 100K invocations @ ~200ms | **$0.00** |
-| **Backblaze B2 storage** | 5GB @ $0.005/GB | **$0.025** |
-| **B2 transactions** | 100K writes @ $0.004/10K | **$0.04** |
-| **B2 downloads** | Covered by 3x free egress | **$0.00** |
-| **Total** | | **~$0.07/month** |
+| **Cloudflare R2 storage** | 5GB @ $0.015/GB (10GB free) | **$0.00** |
+| **R2 operations** | 100K writes (10M free Class A) | **$0.00** |
+| **R2 egress** | Zero egress fees | **$0.00** |
+| **Total** | | **~$0.00/month** |
 
 ### Comparison
 
 | Service | Monthly Cost |
 |---------|--------------|
-| **Pramana (Vercel + B2)** | **$0.07** |
-| Railway + B2 | $5.03 |
+| **Pramana (Vercel + R2)** | **$0.00** |
+| Railway + R2 | $5.00 |
 | AWS Lambda + S3 | ~$15 |
 | LangSmith | $39 |
 | Weights & Biases | $50 |
@@ -393,12 +394,12 @@ DELETE /api/user/me
 ### CORS
 
 - FastAPI: controlled via `CORS_ORIGINS` env var
-- B2 bucket: CORS rule for `your-app.vercel.app` (future pre-signed URL support)
-- Bucket itself: `allPrivate` — direct browser access not possible
+- R2 bucket: CORS rule for `your-app.vercel.app` (future pre-signed URL support)
+- Bucket itself: `private` — direct browser access not possible
 
 ### Data Privacy
 
-- No email or name stored in B2; only `user_id` (opaque hash)
+- No email or name stored in object storage; only `user_id` (opaque hash)
 - GDPR deletion: `DELETE /api/user/me` removes or anonymizes all user partitions
 - `output_hash` enables deduplication without storing content twice
 
@@ -410,12 +411,12 @@ DELETE /api/user/me
 
 - Function invocations, error rates, P50/P95/P99 latency, bandwidth
 
-### B2 Health Check
+### Storage Health Check
 
 ```
 GET your-app.vercel.app/api/health
 → proxied to your-api.vercel.app/api/health
-→ returns B2 credential status and connection test result
+→ returns storage credential status and connection test result
 ```
 
 ### Alerts (configure in Vercel dashboard)
@@ -428,7 +429,7 @@ GET your-app.vercel.app/api/health
 
 ## Future Enhancements
 
-- [ ] Pre-signed B2 URLs for direct browser Parquet access (CORS already configured)
+- [ ] Pre-signed R2 URLs for direct browser Parquet access (CORS already configured)
 - [ ] Automated daily runs (GitHub Actions)
 - [ ] Email alerts for drift detection
 - [ ] LLM judge assertions
@@ -439,7 +440,7 @@ GET your-app.vercel.app/api/health
 ## References
 
 - [Vercel Serverless Functions](https://vercel.com/docs/functions)
-- [Backblaze B2](https://www.backblaze.com/b2/docs/)
+- [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [NextAuth.js](https://next-auth.js.org/)
 - [Apache Parquet](https://parquet.apache.org/)
 - [PyArrow](https://arrow.apache.org/docs/python/)
