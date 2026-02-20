@@ -1,4 +1,5 @@
 """Backblaze B2 storage client - Serverless-optimized."""
+from __future__ import annotations
 
 import asyncio
 import os
@@ -44,8 +45,8 @@ class B2Client:
             Public download URL for the uploaded file
         """
         # Run synchronous B2 SDK in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        file_info = await loop.run_in_executor(
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
             None,
             lambda: self.bucket.upload_bytes(
                 data_bytes=data,
@@ -69,16 +70,14 @@ class B2Client:
         Returns:
             Number of files deleted
         """
-        loop = asyncio.get_event_loop()
-
-        # List all files matching user partition
-        prefix = f"user={user_id}/"
+        loop = asyncio.get_running_loop()
 
         def list_and_delete():
             deleted = 0
-            for file_version, _ in self.bucket.ls(prefix):
-                self.api.delete_file_version(file_version.id_, file_version.file_name)
-                deleted += 1
+            for file_version, _ in self.bucket.ls(recursive=True):
+                if f"/user={user_id}/" in file_version.file_name:
+                    self.api.delete_file_version(file_version.id_, file_version.file_name)
+                    deleted += 1
             return deleted
 
         return await loop.run_in_executor(None, list_and_delete)
@@ -93,16 +92,17 @@ class B2Client:
         Returns:
             Number of files moved
         """
-        loop = asyncio.get_event_loop()
-
-        prefix = f"user={from_user_id}/"
+        loop = asyncio.get_running_loop()
 
         def copy_and_delete():
             moved = 0
-            for file_version, _ in self.bucket.ls(prefix):
+            for file_version, _ in self.bucket.ls(recursive=True):
+                if f"/user={from_user_id}/" not in file_version.file_name:
+                    continue
+
                 # Read file content
                 download_dest = BytesIO()
-                self.bucket.download_file_by_name(file_version.file_name, download_dest)
+                self.bucket.download_file_by_name(file_version.file_name).save(download_dest)
 
                 # Create new key with different user partition
                 old_path = file_version.file_name

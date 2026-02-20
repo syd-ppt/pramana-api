@@ -1,11 +1,11 @@
 """Submission API routes - Serverless-optimized."""
+from __future__ import annotations
 
 import hashlib
 import json
 import os
 import uuid
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Header, HTTPException
 import jwt
@@ -19,10 +19,8 @@ from api.storage.b2_client import B2Client
 
 router = APIRouter()
 
-JWT_SECRET = os.getenv("NEXTAUTH_SECRET")
 
-
-def validate_token(authorization: Optional[str]) -> Optional[str]:
+def validate_token(authorization: str | None) -> str | None:
     """Validate JWT token and extract user_id.
 
     Args:
@@ -42,12 +40,13 @@ def validate_token(authorization: Optional[str]) -> Optional[str]:
 
     token = authorization[7:]  # Remove "Bearer " prefix
 
-    if not JWT_SECRET:
+    jwt_secret = os.getenv("NEXTAUTH_SECRET")
+    if not jwt_secret:
         raise HTTPException(status_code=500, detail="JWT secret not configured")
 
     try:
         # Decode JWT token
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])
         user_id = payload.get("userId")
 
         if not user_id:
@@ -82,7 +81,7 @@ async def write_to_b2(record: dict) -> str:
 
     # Generate unique filename
     record_id = str(uuid.uuid4())
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"pramana_{timestamp}_{record_id[:8]}.parquet"
 
     # Create date partition path with user partition
@@ -132,7 +131,7 @@ async def write_to_b2(record: dict) -> str:
 @router.post("/submit", response_model=SubmissionResponse)
 async def submit_result(
     submission: SubmissionRequest,
-    authorization: Optional[str] = Header(None)
+    authorization: str | None = Header(None)
 ):
     """Submit a single test result.
 
@@ -147,7 +146,7 @@ async def submit_result(
     output_hash = hashlib.sha256(hash_input.encode()).hexdigest()
 
     # Create record
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     record = {
         "timestamp": now,
         "user_id": user_id or "anonymous",
@@ -178,7 +177,10 @@ async def submit_result(
 
 
 @router.post("/submit/batch")
-async def submit_batch(batch: BatchSubmissionRequest):
+async def submit_batch(
+    batch: BatchSubmissionRequest,
+    authorization: str | None = Header(None)
+):
     """Submit batch of results.
 
     Note: In serverless mode, each result creates a separate file.
@@ -189,8 +191,10 @@ async def submit_batch(batch: BatchSubmissionRequest):
 
     for idx, result in enumerate(batch.results):
         try:
-            response = await submit_result(result)
+            response = await submit_result(result, authorization=authorization)
             responses.append(response)
+        except HTTPException as e:
+            errors.append({"index": idx, "error": e.detail})
         except Exception as e:
             errors.append({"index": idx, "error": str(e)})
 

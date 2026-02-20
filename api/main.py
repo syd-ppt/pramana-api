@@ -1,4 +1,5 @@
 """FastAPI application entry point - Serverless-optimized for Vercel."""
+from __future__ import annotations
 
 import os
 from fastapi import FastAPI
@@ -15,10 +16,22 @@ app = FastAPI(
 )
 
 # CORS middleware - restrict to your domain in production
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+if ENVIRONMENT != "development":
+    cors_raw = os.getenv("CORS_ORIGINS")
+    if not cors_raw:
+        raise RuntimeError(
+            "CORS_ORIGINS must be set in production. "
+            "Example: CORS_ORIGINS=https://yourdomain.com"
+        )
+    CORS_ORIGINS = cors_raw.split(",")
+else:
+    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
