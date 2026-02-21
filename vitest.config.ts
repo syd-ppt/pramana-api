@@ -1,8 +1,5 @@
 import { defineConfig } from 'vitest/config'
-import { fileURLToPath } from 'url'
 import path from 'path'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   esbuild: {
@@ -10,12 +7,16 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': __dirname,
+      '@': path.resolve(process.cwd(), 'src'),
+      '@server': path.resolve(process.cwd(), 'server'),
     },
   },
   test: {
-    include: ['lib/**/*.test.ts', 'components/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'server/**/*.test.ts'],
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
+    environmentMatchGlobs: [
+      ['server/**/*.test.ts', 'node'],
+    ],
   },
 })

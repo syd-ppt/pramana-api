@@ -1,0 +1,25 @@
+name: Daily Compact
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger compact endpoint
+        run: |
+          set -euo pipefail
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ vars.APP_URL }}/api/admin/compact" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+          if [ "$http_code" -ne 200 ]; then
+            echo "Compact failed with status $http_code"
+            exit 1
+          fi
