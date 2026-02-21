@@ -21,7 +21,7 @@
     "dev:build": "vite build --configLoader runner && tsx scripts/dev-server.ts",
     "build": "vite build --configLoader runner",
     "preview": "wrangler pages dev dist",
-    "deploy": "vite build --configLoader runner && wrangler pages deploy dist",
+    "deploy": "npm run build && vite build --configLoader runner --config vite.worker.config.ts && wrangler pages deploy dist --no-bundle",
     "test": "vitest run --configLoader runner",
     "test:watch": "vitest --configLoader runner"
   },
