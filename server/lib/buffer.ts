@@ -588,7 +588,7 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
  * Rebuild all user summaries from archives + buffer.
  * Fixes summaries corrupted by the silent uploadFileConditional bug.
  */
-export async function rebuildUserSummaries(bucket: R2Bucket): Promise<number> {
+export async function rebuildUserSummaries(bucket: R2Bucket): Promise<{ users: number; diagnostics: Record<string, { total: number; models: Record<string, number> }> }> {
   const allRecords = await loadAllRecords(bucket)
 
   // Group by user_id
@@ -596,6 +596,16 @@ export async function rebuildUserSummaries(bucket: R2Bucket): Promise<number> {
   for (const r of allRecords) {
     if (!byUser.has(r.user_id)) byUser.set(r.user_id, [])
     byUser.get(r.user_id)!.push(r)
+  }
+
+  // Build diagnostics
+  const diagnostics: Record<string, { total: number; models: Record<string, number> }> = {}
+  for (const [userId, records] of byUser) {
+    const models: Record<string, number> = {}
+    for (const r of records) {
+      models[r.model_id] = (models[r.model_id] || 0) + 1
+    }
+    diagnostics[userId] = { total: records.length, models }
   }
 
   // Build and write each user summary
@@ -621,7 +631,7 @@ export async function rebuildUserSummaries(bucket: R2Bucket): Promise<number> {
     await uploadFile(bucket, key, encoder.encode(JSON.stringify(summary)))
   }
 
-  return byUser.size
+  return { users: byUser.size, diagnostics }
 }
 
 // -- Compact (cron) --

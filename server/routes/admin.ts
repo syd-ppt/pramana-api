@@ -25,6 +25,6 @@ export const adminRoutes = new Hono<Env>()
 
     const bucket = c.env.PRAMANA_DATA
     await rebuildChartJson(bucket)
-    const usersRebuilt = await rebuildUserSummaries(bucket)
-    return c.json({ status: 'completed', rebuilt: true, usersRebuilt })
+    const userResult = await rebuildUserSummaries(bucket)
+    return c.json({ status: 'completed', rebuilt: true, ...userResult })
   })
