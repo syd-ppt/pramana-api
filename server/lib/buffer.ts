@@ -311,7 +311,7 @@ export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
  *   - A prompt "drifted" if its hash differs from the previous day's hash
  */
 export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
-  // 1. Load all archive records
+  // 1. Load all records: archives + current buffer
   const allRecords: StorageRecord[] = []
   const archiveKeys = await listFiles(bucket, ARCHIVE_PREFIX)
   for (const key of archiveKeys) {
@@ -319,6 +319,13 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     const buf = await downloadFile(bucket, key)
     const csv = decoder.decode(await gunzip(buf))
     allRecords.push(...parseCsvBody(csv))
+  }
+
+  // Also read the current buffer (unarchived submissions)
+  const { body: bufferBody } = await downloadFileWithEtag(bucket, BUFFER_KEY)
+  if (bufferBody) {
+    const bufferCsv = decoder.decode(await gunzip(bufferBody))
+    allRecords.push(...parseCsvBody(bufferCsv))
   }
 
   // 2. Sort by date
