@@ -8,7 +8,7 @@ export const SubmissionRequestSchema = z.object({
   model_id: z.string().max(256),
   prompt_id: z.string().max(256),
   output: z.string().max(1_048_576),
-  score: z.number().min(0).max(1).optional(),
+  score: z.number().min(0).max(1).nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
