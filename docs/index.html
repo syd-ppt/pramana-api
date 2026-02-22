@@ -1,94 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Pramana — LLM Drift Detection</title>
-  <meta name="description" content="Open-source LLM drift detection. Track model performance over time with statistical rigor."/>
-  <meta property="og:type" content="website"/>
-  <meta property="og:title" content="Pramana — LLM Drift Detection"/>
-  <meta property="og:description" content="Track LLM performance drift with statistical rigor. Open-source CLI + dashboard."/>
-  <meta property="og:image" content="https://syd-ppt.github.io/pramana-api/og-image.png"/>
-  <meta name="twitter:card" content="summary_large_image"/>
-  <meta name="twitter:image" content="https://syd-ppt.github.io/pramana-api/og-image.png"/>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API &amp; Dashboard — Pramana</title>
+  <meta name="description" content="Pramana API and dashboard: submission, aggregation, and drift detection for LLM eval results.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pramana — LLM Drift Detection">
+  <meta property="og:description" content="Track LLM performance drift with statistical rigor. Open-source CLI + dashboard.">
+  <meta property="og:image" content="https://syd-ppt.github.io/pramana-api/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://syd-ppt.github.io/pramana-api/og-image.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <nav>
-    <a href="./" class="brand">Pramana</a>
-    <a href="getting-started.html">Getting Started</a>
-    <a href="api.html">API</a>
-    <a href="methodology.html">Methodology</a>
-    <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
-    <a href="https://pramana.pages.dev">Dashboard</a>
-  </nav>
+  <button class="nav-toggle" onclick="document.querySelector('nav').classList.toggle('open')">&#9776;</button>
+  <div class="layout">
+    <nav>
+      <div class="logo">
+        <a href="https://syd-ppt.github.io/pramana/">pramana</a>
+        <span class="sanskrit">प्रमाण</span>
+      </div>
+      <ul>
+        <li class="nav-section">CLI</li>
+        <li><a href="https://syd-ppt.github.io/pramana/">Overview</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/quickstart.html">Quick Start</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/cli.html">CLI Reference</a></li>
+        <li class="nav-section">API &amp; Dashboard</li>
+        <li><a href="index.html" class="active">Overview</a></li>
+        <li><a href="getting-started.html">Getting Started</a></li>
+        <li><a href="api.html">API Reference</a></li>
+        <li><a href="methodology.html">Methodology</a></li>
+        <li class="nav-section">Internals</li>
+        <li><a href="https://syd-ppt.github.io/pramana/architecture.html">Architecture</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/providers.html">Providers</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/suites.html">Test Suites</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/reproducibility.html">Reproducibility</a></li>
+        <li class="nav-section">Community</li>
+        <li><a href="https://syd-ppt.github.io/pramana/contributing.html">Contributing</a></li>
+      </ul>
+      <div class="ext-links">
+        <a href="https://github.com/syd-ppt/pramana">GitHub (CLI)</a>
+        <a href="https://github.com/syd-ppt/pramana-api">GitHub (API)</a>
+        <a href="https://pypi.org/project/pramana/">PyPI</a>
+        <a href="https://pramana.pages.dev">Dashboard</a>
+      </div>
+    </nav>
+    <main>
+      <h1>pramana-api <span class="dim">docs</span></h1>
+      <p class="page-desc">Backend infrastructure + dashboard for LLM drift detection.</p>
 
-  <div class="container">
-    <h1>Pramana</h1>
-    <p class="subtitle">Open-source LLM drift detection</p>
+      <p>This is the server-side half of Pramana. It receives eval submissions from the <a href="https://syd-ppt.github.io/pramana/">CLI</a>, stores them in R2, aggregates statistics, and serves a drift detection dashboard.</p>
 
-    <h2>The Problem</h2>
-    <p>
-      LLM behavior changes silently. Provider updates, quantization changes, and infrastructure migrations
-      alter model outputs without notice. Chen et al. (2023) documented this empirically: GPT-4's accuracy
-      on identifying prime numbers dropped from 97.6% to 2.4% between March and June 2023.
-      <a href="https://arxiv.org/abs/2307.09009">How Is ChatGPT's Behavior Changing over Time?</a> (Stanford/Berkeley)
-      demonstrated that drift is real, measurable, and consequential.
-    </p>
-    <p>
-      If your application depends on LLM outputs — classification, extraction, generation — you need
-      continuous monitoring, not one-time benchmarks.
-    </p>
+      <h2>The Problem</h2>
+      <p>LLM behavior changes silently. Provider updates, quantization changes, and infrastructure migrations alter model outputs without notice. Chen et al. (2023) documented this empirically: GPT-4's accuracy on identifying prime numbers dropped from 97.6% to 2.4% between March and June 2023. <a href="https://arxiv.org/abs/2307.09009">How Is ChatGPT's Behavior Changing over Time?</a> (Stanford/Berkeley).</p>
 
-    <h2>What Pramana Does</h2>
-    <p>
-      Pramana is a lightweight eval submission and drift detection system. It consists of two components:
-    </p>
-    <ul>
-      <li><strong>CLI</strong> (<code>pramana</code>) — runs eval suites locally, scores outputs, submits results</li>
-      <li><strong>API + Dashboard</strong> (this repo) — stores submissions, aggregates statistics, detects drift</li>
-    </ul>
-    <p>
-      Detection uses Welch's t-test with Cohen's d effect size and Holm-Bonferroni correction for
-      multiple comparisons. All statistics are computed incrementally via Welford's online algorithm —
-      no raw data is retained.
-    </p>
-
-    <h2>How It Works</h2>
-    <pre><code># Install the CLI
-pip install pramana
-
-# Run evals against a model
-pramana run --model gpt-4o --suite my_evals/
-
-# Submit results
-pramana submit
-
-# View drift dashboard
-open https://pramana.pages.dev</code></pre>
-
-    <h2>Data Flow</h2>
-    <p>Each submission follows this path:</p>
-    <ol>
-      <li><code>POST /api/submit</code> — CLI sends scored results</li>
-      <li>Append to gzip-compressed CSV buffer in R2</li>
-      <li>Update per-user summary (real-time)</li>
-      <li>Daily cron compacts buffer → archive, rebuilds aggregate chart data</li>
-      <li>Dashboard reads pre-aggregated JSON (single R2 GET, &lt;50ms)</li>
-    </ol>
-
-    <h2>Design Decisions</h2>
-    <ul>
-      <li><strong>Stateless API</strong> — no database, no connection pools. CSV + JSON on R2.</li>
-      <li><strong>Append-only</strong> — immutable results. No edits, no deletes of submissions.</li>
-      <li><strong>Incremental statistics</strong> — Welford's algorithm: O(1) storage per group.</li>
-      <li><strong>Zero cost</strong> — Cloudflare Pages free tier + R2 free tier = $0/month.</li>
-      <li><strong>Privacy-preserving</strong> — individual submissions cannot be reconstructed from aggregates.</li>
-    </ul>
-
-    <h2>Architecture</h2>
-    <pre><code>┌──────────┐    POST /api/submit    ┌──────────────┐    R2    ┌─────────────┐
+      <h2>Architecture</h2>
+      <div class="diagram">┌──────────┐    POST /api/submit    ┌──────────────┐    R2    ┌─────────────┐
 │ CLI      │───────────────────────▸│ Hono API     │────────▸│ buffer.csv  │
 │ (pramana)│                        │ (CF Workers) │         │ user/*.json │
 └──────────┘                        └──────┬───────┘         └──────┬──────┘
@@ -102,12 +73,48 @@ open https://pramana.pages.dev</code></pre>
 ┌──────────┐    GET /api/data/chart                                 │
 │ Dashboard│◂───────────────────────────────────────────────────────┘
 │ (Vite)   │
-└──────────┘</code></pre>
+└──────────┘</div>
 
-    <footer>
-      Pramana is open source under the MIT License.
-      <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
-    </footer>
+      <h2>Data Flow</h2>
+      <ol>
+        <li><code>POST /api/submit</code> — CLI sends scored results</li>
+        <li>Append to gzip-compressed CSV buffer in R2</li>
+        <li>Update per-user summary (real-time)</li>
+        <li>Daily cron compacts buffer → archive, rebuilds aggregate chart data</li>
+        <li>Dashboard reads pre-aggregated JSON (single R2 GET, &lt;50ms)</li>
+      </ol>
+
+      <h2>Design Decisions</h2>
+      <ul>
+        <li><strong>Stateless API</strong> — no database, no connection pools. CSV + JSON on R2.</li>
+        <li><strong>Append-only</strong> — immutable results. No edits, no deletes of submissions.</li>
+        <li><strong>Incremental statistics</strong> — Welford's algorithm: O(1) storage per group.</li>
+        <li><strong>Zero cost</strong> — Cloudflare Pages free tier + R2 free tier = $0/month.</li>
+        <li><strong>Privacy-preserving</strong> — individual submissions cannot be reconstructed from aggregates.</li>
+      </ul>
+
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+        <tbody>
+          <tr><td>API</td><td>Hono (Cloudflare Workers runtime)</td></tr>
+          <tr><td>Dashboard</td><td>Vite SPA (React + react-router)</td></tr>
+          <tr><td>Storage</td><td>Cloudflare R2 (native bindings, no S3 SDK)</td></tr>
+          <tr><td>Auth</td><td>jose JWT + OAuth (GitHub, Google)</td></tr>
+          <tr><td>Statistics</td><td>Welch's t-test, Cohen's d, Holm-Bonferroni, Welford's</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Pages</h2>
+      <table>
+        <thead><tr><th>Page</th><th>Content</th></tr></thead>
+        <tbody>
+          <tr><td><a href="getting-started.html">Getting Started</a></td><td>Install CLI, run evals, submit, authenticate</td></tr>
+          <tr><td><a href="api.html">API Reference</a></td><td>Endpoint schemas and response shapes</td></tr>
+          <tr><td><a href="methodology.html">Methodology</a></td><td>Statistical methods behind drift detection</td></tr>
+        </tbody>
+      </table>
+    </main>
   </div>
 </body>
 </html>
