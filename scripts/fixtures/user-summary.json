@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "submissions_by_date": {
+    "2026-02-20": {
+      "gpt-4o": 12,
+      "claude-3.5-sonnet": 8,
+      "gemini-2.0-flash": 4
+    },
+    "2026-02-21": {
+      "gpt-4o": 15,
+      "claude-3.5-sonnet": 6,
+      "gemini-2.0-flash": 3
+    }
+  },
+  "model_submissions": {
+    "gpt-4o": 156,
+    "claude-3.5-sonnet": 98,
+    "gemini-2.0-flash": 58
+  },
+  "total_submissions": 312
+}

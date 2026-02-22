@@ -1,0 +1,16 @@
+{
+  "user_id": "dev-user-mock-id",
+  "total_submissions": 312,
+  "models_tested": [
+    "gpt-4o",
+    "claude-3.5-sonnet",
+    "gemini-2.0-flash"
+  ],
+  "models_count": 3,
+  "model_submissions": {
+    "gpt-4o": 156,
+    "claude-3.5-sonnet": 98,
+    "gemini-2.0-flash": 58
+  },
+  "last_submission": "2026-02-21T18:45:00Z"
+}

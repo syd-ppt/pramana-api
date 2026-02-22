@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/lib/auth';
+import DriftChart from '@/components/DriftChart';
 import Button from '@/components/Button';
-import type { UserStatsResponse, ChartApiResponse } from '@/lib/types';
+import type { UserStatsResponse, ChartApiResponse, ChartDataPoint } from '@/lib/types';
 
 export default function MyStats() {
   const { session, status } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<UserStatsResponse | null>(null);
-  const [communityTotal, setCommunityTotal] = useState<number>(0);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [chartModels, setChartModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,11 +30,59 @@ export default function MyStats() {
     ])
       .then(([statsData, chartResp]) => {
         setStats(statsData);
-        setCommunityTotal(chartResp?.total_submissions ?? 0);
+        if (chartResp) {
+          setChartData(chartResp.data || []);
+          setChartModels(chartResp.models || []);
+        }
       })
       .catch(() => setStats(null))
       .finally(() => setLoading(false));
   }, [status]);
+
+  // Filter chart to user's tested models
+  const userModels = useMemo(() => {
+    if (!stats) return [];
+    return stats.models_tested.filter((m) => chartModels.includes(m));
+  }, [stats, chartModels]);
+
+  // Latest consistency per model from chart data
+  const latestConsistency = useMemo(() => {
+    if (chartData.length === 0) return {} as Record<string, number>;
+    const latest = chartData[chartData.length - 1];
+    const result: Record<string, number> = {};
+    for (const model of userModels) {
+      result[model] = (latest[`${model}_consistency`] as number) ?? 1.0;
+    }
+    return result;
+  }, [chartData, userModels]);
+
+  // Weighted avg consistency across user's models
+  const avgConsistency = useMemo(() => {
+    if (chartData.length === 0 || userModels.length === 0) return null;
+    const latest = chartData[chartData.length - 1];
+    let totalPrompts = 0;
+    let weightedSum = 0;
+    for (const model of userModels) {
+      const prompts = (latest[`${model}_prompts`] as number) || 0;
+      const consistency = (latest[`${model}_consistency`] as number) || 0;
+      weightedSum += prompts * consistency;
+      totalPrompts += prompts;
+    }
+    return totalPrompts > 0 ? weightedSum / totalPrompts : null;
+  }, [chartData, userModels]);
+
+  // Total drift events per model across all chart data
+  const modelDriftTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const model of userModels) {
+      let sum = 0;
+      for (const point of chartData) {
+        sum += (point[`${model}_drifted`] as number) || 0;
+      }
+      totals[model] = sum;
+    }
+    return totals;
+  }, [chartData, userModels]);
 
   if (status === 'loading' || (status === 'authenticated' && loading)) {
     return (
@@ -45,9 +95,6 @@ export default function MyStats() {
   if (!session) return null;
 
   const userId = session.user.id;
-  const contributionPct = communityTotal > 0 && stats
-    ? ((stats.total_submissions / communityTotal) * 100).toFixed(1)
-    : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -68,17 +115,7 @@ export default function MyStats() {
         ) : (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              <div className="bg-white shadow-sm rounded-lg p-6">
-                <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
-                  Total Submissions
-                </h2>
-                <p className="text-3xl font-bold text-slate-900">{stats.total_submissions}</p>
-                <p className="text-sm text-slate-500 mt-1">
-                  Last: {stats.last_submission ? new Date(stats.last_submission).toLocaleDateString() : 'Never'}
-                </p>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
               <div className="bg-white shadow-sm rounded-lg p-6">
                 <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
                   Models Tested
@@ -91,31 +128,74 @@ export default function MyStats() {
 
               <div className="bg-white shadow-sm rounded-lg p-6">
                 <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
-                  Contribution
+                  Avg Consistency
                 </h2>
-                <p className="text-3xl font-bold text-slate-900">
-                  {contributionPct ? `${contributionPct}%` : '—'}
+                <p className={`text-3xl font-bold ${
+                  avgConsistency === null ? 'text-slate-400' :
+                  avgConsistency >= 0.95 ? 'text-green-700' :
+                  avgConsistency >= 0.80 ? 'text-yellow-700' :
+                  'text-red-700'
+                }`}>
+                  {avgConsistency !== null ? `${(avgConsistency * 100).toFixed(1)}%` : '—'}
                 </p>
+                <p className="text-sm text-slate-500 mt-1">weighted across your models</p>
+              </div>
+
+              <div className="bg-white shadow-sm rounded-lg p-6">
+                <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Total Submissions
+                </h2>
+                <p className="text-3xl font-bold text-slate-900">{stats.total_submissions}</p>
                 <p className="text-sm text-slate-500 mt-1">
-                  of {communityTotal.toLocaleString()} total submissions
+                  Last: {stats.last_submission ? new Date(stats.last_submission).toLocaleDateString() : 'Never'}
                 </p>
               </div>
             </div>
 
-            {/* Per-model submissions */}
-            {Object.keys(stats.model_submissions).length > 0 && (
-              <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">Per-Model Submissions</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {Object.entries(stats.model_submissions)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([model, count]) => (
-                      <div key={model} className="border border-slate-200 rounded-lg p-4 flex justify-between items-center">
-                        <h3 className="font-medium text-slate-900">{model}</h3>
-                        <span className="font-mono text-lg text-slate-700">{count}</span>
+            {/* Consistency Chart (filtered to user's models) */}
+            {userModels.length > 0 && chartData.length > 0 && (
+              <div className="mb-8">
+                <DriftChart
+                  data={chartData}
+                  models={userModels}
+                  view="consistency"
+                  title="Your Models — Consistency Over Time"
+                />
+              </div>
+            )}
+
+            {/* Per-model consistency cards */}
+            {userModels.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                {userModels
+                  .sort((a, b) => (latestConsistency[a] ?? 1) - (latestConsistency[b] ?? 1))
+                  .map((model) => {
+                    const consistency = latestConsistency[model] ?? 1.0;
+                    const subs = stats.model_submissions[model] ?? 0;
+                    const drifted = modelDriftTotals[model] ?? 0;
+
+                    return (
+                      <div key={model} className="bg-white border border-slate-200 rounded-lg p-4 flex justify-between items-center">
+                        <div>
+                          <h3 className="font-medium text-slate-900">{model}</h3>
+                          <p className="text-sm text-slate-500 mt-0.5">
+                            {subs} submissions
+                            <span className="mx-1">&middot;</span>
+                            <span className={drifted === 0 ? 'text-green-700' : drifted <= 3 ? 'text-yellow-700' : 'text-red-700'}>
+                              {drifted} drift events
+                            </span>
+                          </p>
+                        </div>
+                        <span className={`text-lg font-bold ${
+                          consistency >= 0.95 ? 'text-green-700' :
+                          consistency >= 0.80 ? 'text-yellow-700' :
+                          'text-red-700'
+                        }`}>
+                          {(consistency * 100).toFixed(0)}%
+                        </span>
                       </div>
-                    ))}
-                </div>
+                    );
+                  })}
               </div>
             )}
 

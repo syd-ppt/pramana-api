@@ -13,6 +13,22 @@ import { userRoutes } from '../server/routes/user'
 import { adminRoutes } from '../server/routes/admin'
 import { authRoutes } from '../server/routes/auth'
 import * as fs from 'fs'
+import * as path from 'path'
+
+// Load mock fixtures for local dev
+const fixturesDir = path.join(import.meta.dirname!, 'fixtures')
+function loadFixture(name: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(fixturesDir, name), 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+const mockChartData = loadFixture('chart-data.json')
+const mockUserStats = loadFixture('user-stats.json')
+const mockUserSummary = loadFixture('user-summary.json')
+const mockSession = { user: { id: 'dev-user-mock-id', name: 'Dev User' }, token: 'mock-dev-token' }
 
 type Env = {
   Bindings: {
@@ -56,6 +72,16 @@ app.use('/api/*', async (c, next) => {
   bindings.CRON_SECRET = process.env.CRON_SECRET || envVars.CRON_SECRET || ''
   await next()
 })
+
+// Mock routes — registered first so they take precedence in dev
+if (mockChartData) {
+  console.log('Mock fixtures loaded — /api/data/chart, /api/user/*, /api/auth/session use mock data')
+  app.get('/api/data/chart', (c) => c.json(mockChartData))
+  app.get('/api/user/me/stats', (c) => c.json(mockUserStats))
+  app.get('/api/user/me/summary', (c) => c.json(mockUserSummary))
+  app.get('/api/auth/session', (c) => c.json(mockSession))
+  app.get('/api/auth/providers', (c) => c.json({ providers: ['github'] }))
+}
 
 // API routes — must be registered BEFORE static file serving
 app.route('/api', statusRoutes)
