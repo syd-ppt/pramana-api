@@ -4,22 +4,33 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to run'
+        required: false
+        default: 'compact'
+        type: choice
+        options:
+          - compact
+          - rebuild
 
 jobs:
   compact:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger compact endpoint
+      - name: Trigger admin endpoint
         run: |
           set -euo pipefail
+          ACTION="${{ inputs.action || 'compact' }}"
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            "${{ vars.APP_URL }}/api/admin/compact" \
+            "${{ vars.APP_URL }}/api/admin/${ACTION}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
+          echo "Action: $ACTION"
           echo "Response: $body"
           echo "HTTP Status: $http_code"
           if [ "$http_code" -ne 200 ]; then
-            echo "Compact failed with status $http_code"
+            echo "$ACTION failed with status $http_code"
             exit 1
           fi
