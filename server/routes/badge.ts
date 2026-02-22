@@ -1,7 +1,5 @@
 import { Hono } from 'hono'
 import { readChartJson } from '../lib/buffer'
-import { welfordMerge } from '../lib/buffer'
-import { welchTTest } from '../lib/stats'
 import type { ModelDayStats } from '../lib/schemas'
 
 type Env = { Bindings: { PRAMANA_DATA: R2Bucket } }
@@ -30,14 +28,6 @@ function makeBadgeSvg(label: string, status: string, color: string): string {
 </svg>`
 }
 
-function poolModelDayStats(statsList: ModelDayStats[]): ModelDayStats {
-  let merged: ModelDayStats = { n: 0, mean: 0, m2: 0, count: 0 }
-  for (const s of statsList) {
-    merged = welfordMerge(merged, s)
-  }
-  return merged
-}
-
 export const badgeRoutes = new Hono<Env>().get('/:model', async (c) => {
   const model = c.req.param('model')
   const chart = await readChartJson(c.env.PRAMANA_DATA)
@@ -46,37 +36,36 @@ export const badgeRoutes = new Hono<Env>().get('/:model', async (c) => {
     return c.text('Model not found', 404)
   }
 
+  // Compute consistency over last 7 days
   const dates = Object.keys(chart.data).sort()
   const recentDates = dates.slice(-7)
-  const baselineDates = dates.slice(-14, -7)
 
-  const recentList: ModelDayStats[] = []
-  const baselineList: ModelDayStats[] = []
+  let totalPrompts = 0
+  let totalDrifted = 0
 
   for (const date of recentDates) {
     const s = chart.data[date]?.[model]
-    if (s && s.n > 0) recentList.push(s)
-  }
-  for (const date of baselineDates) {
-    const s = chart.data[date]?.[model]
-    if (s && s.n > 0) baselineList.push(s)
+    if (s) {
+      totalPrompts += s.prompts_tested
+      totalDrifted += s.drifted_prompts
+    }
   }
 
-  const recent = poolModelDayStats(recentList)
-  const baseline = poolModelDayStats(baselineList)
-  const test = welchTTest(recent, baseline)
+  const consistency = totalPrompts > 0
+    ? (totalPrompts - totalDrifted) / totalPrompts
+    : 1.0
 
   let status: string
   let color: string
-  if (test && test.pValue < 0.05 && recent.mean < baseline.mean) {
-    status = 'Degraded'
-    color = '#e05d44'
-  } else if (test && test.pValue < 0.1 && recent.mean < baseline.mean) {
-    status = 'Watch'
+  if (consistency >= 0.95) {
+    status = `${(consistency * 100).toFixed(0)}% consistent`
+    color = '#4c1'
+  } else if (consistency >= 0.80) {
+    status = `${(consistency * 100).toFixed(0)}% consistent`
     color = '#dfb317'
   } else {
-    status = 'Stable'
-    color = '#4c1'
+    status = `${(consistency * 100).toFixed(0)}% drifting`
+    color = '#e05d44'
   }
 
   const svg = makeBadgeSvg('pramana', status, color)

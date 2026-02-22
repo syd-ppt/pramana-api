@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Methodology — Pramana</title>
-  <meta name="description" content="Statistical methodology: Welch's t-test, Cohen's d, Holm-Bonferroni, Wilson CI, Welford's algorithm.">
+  <meta name="description" content="Drift detection methodology: hash-based output consistency tracking.">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,105 +45,68 @@
     </nav>
     <main>
       <h1>Methodology</h1>
-      <p class="page-desc">How Pramana detects drift and quantifies its significance.</p>
+      <p class="page-desc">How Pramana detects LLM drift through output consistency tracking.</p>
 
-      <h2>Welch's t-test</h2>
-      <p>We use Welch's t-test (not Student's) because model performance samples have unequal variances across time periods. Student's t-test assumes homoscedasticity. When violated (it always is with LLM evals), it produces inflated false-positive rates. Welch's approximation adjusts degrees of freedom.</p>
+      <h2>Core Principle</h2>
+      <p>Each submission stores <code>output_hash = sha256(model_id | prompt_id | output)</code>. Same prompt + same model + different hash = the model's behavior changed. That's drift. No scoring needed.</p>
 
-      <h3>Test statistic</h3>
+      <h2>Output Hash</h2>
+      <p>Every submission computes a deterministic hash from three fields:</p>
       <div class="formula">
-        t = (x&#772;<sub>1</sub> &minus; x&#772;<sub>2</sub>) / &radic;(s<sub>1</sub>&sup2;/n<sub>1</sub> + s<sub>2</sub>&sup2;/n<sub>2</sub>)
+        output_hash = SHA-256(model_id + "|" + prompt_id + "|" + output)
       </div>
+      <p>This hash is stored with each CSV record. It captures the exact output for a given (model, prompt) pair without storing raw outputs in the aggregated data.</p>
 
-      <h3>Welch-Satterthwaite degrees of freedom</h3>
-      <div class="formula">
-        &nu; = (s<sub>1</sub>&sup2;/n<sub>1</sub> + s<sub>2</sub>&sup2;/n<sub>2</sub>)&sup2; / [(s<sub>1</sub>&sup2;/n<sub>1</sub>)&sup2;/(n<sub>1</sub>&minus;1) + (s<sub>2</sub>&sup2;/n<sub>2</sub>)&sup2;/(n<sub>2</sub>&minus;1)]
-      </div>
+      <h2>Drift Detection</h2>
+      <p>During daily aggregation, Pramana tracks the last-seen hash for each (model, prompt) pair. When a prompt's hash changes from one day to the next, it counts as a "drifted prompt."</p>
 
-      <p>P-value computed via t-distribution CDF using regularized incomplete beta function (Lentz's continued fraction).</p>
-      <p class="src">src/lib/statistics.ts:102</p>
-
-      <h2>Cohen's d Effect Size</h2>
-      <p>Statistical significance alone is insufficient. A large sample can make trivial differences "significant." Cohen's d measures practical magnitude independent of sample size.</p>
-
-      <div class="formula">
-        d = |x&#772;<sub>1</sub> &minus; x&#772;<sub>2</sub>| / s<sub>p</sub>
-        <br>
-        s<sub>p</sub> = &radic;[((n<sub>1</sub>&minus;1)s<sub>1</sub>&sup2; + (n<sub>2</sub>&minus;1)s<sub>2</sub>&sup2;) / (n<sub>1</sub> + n<sub>2</sub> &minus; 2)]
-      </div>
-
+      <h3>Per-model, per-day statistics</h3>
       <table>
-        <thead><tr><th>|d|</th><th>Interpretation</th><th>Action</th></tr></thead>
+        <thead><tr><th>Metric</th><th>Definition</th></tr></thead>
         <tbody>
-          <tr><td>&lt; 0.2</td><td>Negligible</td><td>No action needed</td></tr>
-          <tr><td>0.2 – 0.5</td><td>Small</td><td>Monitor — may be noise</td></tr>
-          <tr><td>0.5 – 0.8</td><td>Medium</td><td>Investigate — likely real drift</td></tr>
-          <tr><td>&gt; 0.8</td><td>Large</td><td>Act — significant behavioral change</td></tr>
+          <tr><td><code>submissions</code></td><td>Total submission records for this model on this day</td></tr>
+          <tr><td><code>prompts_tested</code></td><td>Unique prompt IDs submitted</td></tr>
+          <tr><td><code>unique_outputs</code></td><td>Unique output hashes observed</td></tr>
+          <tr><td><code>drifted_prompts</code></td><td>Prompts whose hash differs from the previous day's hash</td></tr>
         </tbody>
       </table>
 
-      <p>A result is flagged as degraded only when p &lt; &alpha; <em>and</em> recent mean &lt; baseline mean.</p>
-      <p class="src">src/lib/statistics.ts:161</p>
+      <h2>Consistency Rate</h2>
+      <div class="formula">
+        consistency = (prompts_tested &minus; drifted_prompts) / prompts_tested
+      </div>
+      <p>A consistency rate of 1.0 means all tested prompts returned the same output as the previous day. A rate below 1.0 indicates drift.</p>
 
-      <h2>Holm-Bonferroni Correction</h2>
-      <p>Testing k models simultaneously inflates family-wise error rate. Testing k=10 at &alpha;=0.05 gives ~40% chance of at least one false alarm (1 &minus; 0.95<sup>10</sup>). Holm-Bonferroni is a stepwise procedure that controls FWER while being uniformly more powerful than classic Bonferroni.</p>
+      <table>
+        <thead><tr><th>Consistency</th><th>Status</th><th>Interpretation</th></tr></thead>
+        <tbody>
+          <tr><td>&ge; 95%</td><td>Stable</td><td>Model behavior is consistent</td></tr>
+          <tr><td>80% – 95%</td><td>Watch</td><td>Some outputs have changed</td></tr>
+          <tr><td>&lt; 80%</td><td>Drifting</td><td>Significant behavioral change detected</td></tr>
+        </tbody>
+      </table>
 
-      <h3>Algorithm</h3>
+      <h2>Aggregation Pipeline</h2>
       <ol>
-        <li>Sort m p-values: p<sub>(1)</sub> &le; p<sub>(2)</sub> &le; &hellip; &le; p<sub>(m)</sub></li>
-        <li>Compute adjusted: p&#770;<sub>(i)</sub> = max(p&#770;<sub>(i&minus;1)</sub>, p<sub>(i)</sub> &times; (m &minus; i + 1))</li>
-        <li>Reject H<sub>0</sub> for all i where p&#770;<sub>(i)</sub> &lt; &alpha;</li>
+        <li>Parse all archive CSVs into flat record list</li>
+        <li>Sort records by date</li>
+        <li>Track <code>prevHash: Map&lt;model|prompt, hash&gt;</code> — last-seen hash per prompt</li>
+        <li>Group records by (date, model)</li>
+        <li>For each (date, model) group: compute submissions, prompts_tested, unique_outputs, drifted_prompts</li>
+        <li>Store as <code>chart_data.json</code></li>
       </ol>
-
-      <div class="formula">
-        p&#770;<sub>(i)</sub> = min(1, max<sub>j&le;i</sub> { p<sub>(j)</sub> &middot; (m &minus; j + 1) })
-      </div>
-      <p class="src">src/lib/statistics.ts:239</p>
-
-      <h2>Wilson Confidence Intervals</h2>
-      <p>For binary pass/fail scores, Wald intervals (p&#770; &plusmn; z&radic;(p&#770;q&#770;/n)) have poor coverage at extreme proportions and small n. Wilson intervals maintain correct coverage across the full range.</p>
-
-      <div class="formula">
-        CI = (p&#770; + z&sup2;/2n &plusmn; z&radic;(p&#770;q&#770;/n + z&sup2;/4n&sup2;)) / (1 + z&sup2;/n)
-      </div>
-      <p>Where z = 1.96 for 95% confidence. Displayed in the dashboard as shaded CI bands around each model's score line.</p>
-
-      <h2>Welford's Online Algorithm</h2>
-      <p>All per-model, per-day statistics are computed incrementally using Welford's algorithm. Stores only (n, mean, M<sub>2</sub>) per group — O(1) vs O(n) for raw data.</p>
-
-      <h3>Update step (single observation x)</h3>
-      <div class="formula">
-        n &larr; n + 1<br>
-        &delta; = x &minus; mean<br>
-        mean &larr; mean + &delta;/n<br>
-        &delta;<sub>2</sub> = x &minus; mean<br>
-        M<sub>2</sub> &larr; M<sub>2</sub> + &delta; &middot; &delta;<sub>2</sub>
-      </div>
-
-      <h3>Parallel merge (combining two groups a, b)</h3>
-      <div class="formula">
-        n = n<sub>a</sub> + n<sub>b</sub><br>
-        &delta; = mean<sub>b</sub> &minus; mean<sub>a</sub><br>
-        mean = (n<sub>a</sub> &middot; mean<sub>a</sub> + n<sub>b</sub> &middot; mean<sub>b</sub>) / n<br>
-        M<sub>2</sub> = M<sub>2,a</sub> + M<sub>2,b</sub> + &delta;&sup2; &middot; n<sub>a</sub> &middot; n<sub>b</sub> / n
-      </div>
 
       <div class="callout">
-        <strong>Privacy property:</strong> Individual submissions cannot be reconstructed from (n, mean, M<sub>2</sub>) aggregates. Only summary statistics are stored and transmitted.
+        <strong>Privacy property:</strong> Only aggregate counts and hashes are stored in chart data. Individual outputs cannot be reconstructed from the aggregated statistics.
       </div>
 
-      <p>Variance recovered as s&sup2; = M<sub>2</sub> / (n &minus; 1) (Bessel's correction).</p>
-      <p class="src">src/lib/statistics.ts:211 (poolStats)</p>
-
-      <h2>Detection Pipeline</h2>
-      <p>The full pipeline runs client-side on pre-aggregated chart data:</p>
-      <ol>
-        <li>Split each model's time series into baseline (older window) and recent (newer window)</li>
-        <li>Compute Welch's t-test from summary statistics (no raw data needed)</li>
-        <li>Compute Cohen's d from pooled standard deviation</li>
-        <li>Apply Holm-Bonferroni across all models tested</li>
-        <li>Flag as degraded if adjusted p &lt; 0.05 <em>and</em> recent mean &lt; baseline mean</li>
-      </ol>
+      <h2>Badge Endpoint</h2>
+      <p>The <code>/api/badge/:model</code> endpoint computes consistency over the last 7 days and returns an SVG badge:</p>
+      <ul>
+        <li>Green: &ge; 95% consistent</li>
+        <li>Yellow: 80%–95% consistent</li>
+        <li>Red: &lt; 80% consistent (drifting)</li>
+      </ul>
     </main>
   </div>
 </body>

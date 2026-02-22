@@ -146,34 +146,36 @@ describe('appendToCsvBuffer', () => {
 })
 
 describe('updateUserSummary', () => {
-  it('creates new summary when none exists', async () => {
+  it('creates new v3 summary when none exists', async () => {
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     mockUploadFile.mockResolvedValue(undefined)
 
     const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord()])
 
-    expect(summary.version).toBe(2)
+    expect(summary.version).toBe(3)
     expect(summary.total_submissions).toBe(1)
-    expect(summary.date_stats['2026-02-21']['gpt-5'].count).toBe(1)
-    // No score provided, so n should be 0
-    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(0)
+    expect(summary.submissions_by_date['2026-02-21']['gpt-5']).toBe(1)
+    expect(summary.model_submissions['gpt-5']).toBe(1)
   })
 
-  it('creates summary with scored record', async () => {
+  it('accumulates multiple records', async () => {
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     mockUploadFile.mockResolvedValue(undefined)
 
-    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord({ score: 0.8 })])
+    const summary = await updateUserSummary(fakeBucket, 'user1', [
+      makeRecord(),
+      makeRecord({ id: 'test-id-2', model_id: 'gpt-4' }),
+      makeRecord({ id: 'test-id-3' }),
+    ])
 
-    expect(summary.total_submissions).toBe(1)
-    expect(summary.total_scored).toBe(1)
-    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(1)
-    expect(summary.date_stats['2026-02-21']['gpt-5'].mean).toBe(0.8)
-    expect(summary.model_stats['gpt-5'].n).toBe(1)
-    expect(summary.model_stats['gpt-5'].mean).toBe(0.8)
+    expect(summary.total_submissions).toBe(3)
+    expect(summary.submissions_by_date['2026-02-21']['gpt-5']).toBe(2)
+    expect(summary.submissions_by_date['2026-02-21']['gpt-4']).toBe(1)
+    expect(summary.model_submissions['gpt-5']).toBe(2)
+    expect(summary.model_submissions['gpt-4']).toBe(1)
   })
 
-  it('migrates v1 summary and accumulates', async () => {
+  it('migrates v1 summary (date_counts) to v3', async () => {
     const existing = JSON.stringify({
       date_counts: { '2026-02-20': { 'gpt-4': 3 } },
       total_submissions: 3,
@@ -184,24 +186,45 @@ describe('updateUserSummary', () => {
     })
     mockUploadFileConditional.mockResolvedValue(undefined)
 
-    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord({ score: 0.9 })])
+    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord()])
 
-    expect(summary.version).toBe(2)
+    expect(summary.version).toBe(3)
     expect(summary.total_submissions).toBe(4)
-    // v1 data migrated: count preserved, no score data
-    expect(summary.date_stats['2026-02-20']['gpt-4'].count).toBe(3)
-    expect(summary.date_stats['2026-02-20']['gpt-4'].n).toBe(0)
-    // New record with score
-    expect(summary.date_stats['2026-02-21']['gpt-5'].count).toBe(1)
-    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(1)
-    expect(summary.date_stats['2026-02-21']['gpt-5'].mean).toBe(0.9)
+    expect(summary.submissions_by_date['2026-02-20']['gpt-4']).toBe(3)
+    expect(summary.submissions_by_date['2026-02-21']['gpt-5']).toBe(1)
+    expect(summary.model_submissions['gpt-4']).toBe(3)
+    expect(summary.model_submissions['gpt-5']).toBe(1)
+  })
+
+  it('migrates v2 summary (Welford date_stats) to v3', async () => {
+    const existing = JSON.stringify({
+      version: 2,
+      date_stats: { '2026-02-20': { 'gpt-4': { n: 2, mean: 0.8, m2: 0.1, count: 5 } } },
+      model_stats: { 'gpt-4': { n: 2, mean: 0.8, m2: 0.1, count: 5 } },
+      total_submissions: 5,
+      total_scored: 2,
+    })
+    mockDownloadFileWithEtag.mockResolvedValue({
+      body: encoder.encode(existing),
+      etag: '"e2"',
+    })
+    mockUploadFileConditional.mockResolvedValue(undefined)
+
+    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord()])
+
+    expect(summary.version).toBe(3)
+    expect(summary.total_submissions).toBe(6)
+    // v2 count was 5, migrated as submission count
+    expect(summary.submissions_by_date['2026-02-20']['gpt-4']).toBe(5)
+    expect(summary.submissions_by_date['2026-02-21']['gpt-5']).toBe(1)
   })
 })
 
 describe('readChartJson', () => {
-  it('returns empty structure when file missing', async () => {
+  it('returns empty v3 structure when file missing', async () => {
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     const chart = await readChartJson(fakeBucket)
+    expect(chart.version).toBe(3)
     expect(chart.data).toEqual({})
     expect(chart.models).toEqual([])
     expect(chart.total_submissions).toBe(0)
@@ -209,9 +232,15 @@ describe('readChartJson', () => {
 
   it('parses existing chart JSON', async () => {
     const json = JSON.stringify({
-      data: { '2026-02-21': { 'gpt-5': 5 } },
+      version: 3,
+      data: {
+        '2026-02-21': {
+          'gpt-5': { submissions: 5, prompts_tested: 3, unique_outputs: 3, drifted_prompts: 0 }
+        }
+      },
       models: ['gpt-5'],
       total_submissions: 5,
+      total_contributors: 1,
     })
     mockDownloadFileWithEtag.mockResolvedValue({
       body: encoder.encode(json),
@@ -220,7 +249,8 @@ describe('readChartJson', () => {
 
     const chart = await readChartJson(fakeBucket)
     expect(chart.total_submissions).toBe(5)
-    expect(chart.data['2026-02-21']['gpt-5']).toBe(5)
+    expect(chart.data['2026-02-21']['gpt-5'].submissions).toBe(5)
+    expect(chart.data['2026-02-21']['gpt-5'].drifted_prompts).toBe(0)
   })
 })
 

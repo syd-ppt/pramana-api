@@ -44,35 +44,27 @@ export interface StorageRecord {
   score: number | null;
 }
 
-/** Welford online statistics for a model on a given day */
+/** Hash-based output consistency stats for a model on a given day */
 export interface ModelDayStats {
-  n: number;       // scored submissions
-  mean: number;    // running mean (Welford)
-  m2: number;      // sum of squared deviations (Welford)
-  count: number;   // total submissions including unscored
+  submissions: number;       // total submission records
+  prompts_tested: number;    // unique prompt_ids
+  unique_outputs: number;    // unique output_hashes across all prompts
+  drifted_prompts: number;   // prompts whose hash changed vs previous day
 }
 
 /** Aggregated chart data stored as _aggregated/chart_data.json */
 export interface ChartJson {
-  version: 2;
+  version: 3;
   data: Record<string, Record<string, ModelDayStats>>;  // date → model → stats
   models: string[];
   total_submissions: number;
-  total_scored: number;
   total_contributors: number;
 }
 
 /** Per-user summary stored as _users/{user_id}/summary.json */
 export interface UserSummaryJson {
-  version: 2;
-  date_stats: Record<string, Record<string, ModelDayStats>>;
-  model_stats: Record<string, ModelDayStats>;  // all-time per-model
-  total_submissions: number;
-  total_scored: number;
-}
-
-/** Legacy v1 user summary for migration */
-export interface UserSummaryV1 {
-  date_counts: Record<string, Record<string, number>>;
+  version: 3;
+  submissions_by_date: Record<string, Record<string, number>>;  // date → model → count
+  model_submissions: Record<string, number>;                     // model → total
   total_submissions: number;
 }

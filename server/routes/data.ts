@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { readChartJson } from '../lib/buffer'
-import { normalCI, wilsonCI, isBinaryScore } from '../lib/stats'
 import type { ModelDayStats } from '../lib/schemas'
 
 type Env = { Bindings: { PRAMANA_DATA: R2Bucket } }
@@ -13,15 +12,13 @@ export const dataRoutes = new Hono<Env>().get('/chart', async (c) => {
     .map(([date, models]) => {
       const point: Record<string, string | number> = { date }
       for (const [model, stats] of Object.entries(models) as [string, ModelDayStats][]) {
-        point[model] = stats.mean
-        point[`${model}_n`] = stats.n
-        point[`${model}_count`] = stats.count
-        point[`${model}_variance`] = stats.n < 2 ? 0 : stats.m2 / (stats.n - 1)
-        const ci = isBinaryScore(stats)
-          ? wilsonCI(Math.round(stats.mean * stats.n), stats.n)
-          : normalCI(stats)
-        point[`${model}_ci_low`] = ci.lower
-        point[`${model}_ci_high`] = ci.upper
+        point[model] = stats.submissions
+        point[`${model}_prompts`] = stats.prompts_tested
+        point[`${model}_unique_outputs`] = stats.unique_outputs
+        point[`${model}_drifted`] = stats.drifted_prompts
+        point[`${model}_consistency`] = stats.prompts_tested > 0
+          ? (stats.prompts_tested - stats.drifted_prompts) / stats.prompts_tested
+          : 1.0
       }
       return point
     })
@@ -31,7 +28,6 @@ export const dataRoutes = new Hono<Env>().get('/chart', async (c) => {
       data,
       models: chart.models,
       total_submissions: chart.total_submissions,
-      total_scored: chart.total_scored,
       total_contributors: chart.total_contributors,
     },
     200,

@@ -20,7 +20,7 @@
 
   <!-- Title -->
   <text x="60" y="52" class="title">Pramana</text>
-  <text x="60" y="78" class="subtitle">LLM drift detection — model performance over time</text>
+  <text x="60" y="78" class="subtitle">LLM drift detection — output consistency over time</text>
 
   <!-- Y-axis labels -->
   <text x="108" y="105" class="axis-label" text-anchor="end">1.0</text>
@@ -31,7 +31,7 @@
   <text x="108" y="505" class="axis-label" text-anchor="end">0.0</text>
 
   <!-- Y-axis title -->
-  <text x="30" y="300" class="axis-title" text-anchor="middle" transform="rotate(-90 30 300)">Mean Score</text>
+  <text x="30" y="300" class="axis-title" text-anchor="middle" transform="rotate(-90 30 300)">Submissions</text>
 
   <!-- Horizontal grid lines -->
   <line x1="120" y1="100" x2="1160" y2="100" class="grid"/>

@@ -16,7 +16,7 @@
 
 LLM providers silently update their models. The same prompt that worked last month might return different — or worse — results today.
 
-Pramana detects this. Users run standardized prompts against any model with the [CLI](https://github.com/syd-ppt/pramana), submit results here, and this service aggregates submissions, runs statistical tests (Welch's t-test with Holm-Bonferroni correction), and displays drift on a [public dashboard](https://pramana.pages.dev).
+Pramana detects this. Users run standardized prompts against any model with the [CLI](https://github.com/syd-ppt/pramana), submit results here, and this service tracks output consistency via SHA-256 hashing — same prompt + same model + different output = drift detected — and displays it on a [public dashboard](https://pramana.pages.dev).
 
 **This repo is the server side.** To run evaluations, use the [CLI](https://github.com/syd-ppt/pramana).
 
@@ -32,11 +32,11 @@ You                          Pramana                         Dashboard
  |  pramana submit results.json |                               |
  |----------------------------->|                               |
  |      POST /api/submit        |                               |
- |                              |-- aggregate + statistical     |
- |                              |   tests (daily cron)          |
+ |                              |-- aggregate + hash-based      |
+ |                              |   consistency (daily cron)    |
  |                              |------------------------------>|
  |                              |     drift visualization       |
- |                              |     "you vs crowd" stats      |
+ |                              |     consistency tracking      |
 ```
 
 ---
@@ -49,7 +49,7 @@ You                          Pramana                         Dashboard
 | `POST` | `/api/submit/batch` | Optional | Submit multiple results |
 | `GET` | `/api/data/chart` | None | Aggregated drift data |
 | `GET` | `/api/user/me/stats` | Required | Personal statistics |
-| `GET` | `/api/user/me/comparison` | Required | You vs crowd comparison |
+| `GET` | `/api/user/me/summary` | Required | Submission summary |
 | `DELETE` | `/api/user/me` | Required | Delete your data (GDPR) |
 | `GET` | `/api/health` | None | Health check |
 

@@ -1,45 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import DriftChart from '@/components/DriftChart';
 import FilterPanel, { Filters } from '@/components/FilterPanel';
-import StatisticalBadge from '@/components/StatisticalBadge';
-import ModelSummaryCard from '@/components/ModelSummaryCard';
-import MethodologyPanel from '@/components/MethodologyPanel';
 import Button from '@/components/Button';
-import {
-  detectDegradationFromStats,
-  poolStats,
-  holmBonferroni,
-  type DegradationResult,
-  type SummaryStats,
-} from '@/lib/statistics';
 import type { ChartDataPoint, ChartApiResponse } from '@/lib/types';
-
-const COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed'];
-
-function getDayStats(data: ChartDataPoint[], model: string, days: number): SummaryStats[] {
-  const recent = data.slice(-days);
-  return recent
-    .filter((d) => d[`${model}_n`] != null && (d[`${model}_n`] as number) > 0)
-    .map((d) => ({
-      n: d[`${model}_n`] as number,
-      mean: d[model] as number,
-      variance: d[`${model}_variance`] as number,
-    }));
-}
 
 export default function Home() {
   const [filters, setFilters] = useState<Filters>({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     selectedModels: [],
-    recentWindow: 7,
-    baselineWindow: 7,
   });
 
   const [rawData, setRawData] = useState<ChartDataPoint[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
-  const [totalScored, setTotalScored] = useState(0);
   const [totalContributors, setTotalContributors] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +34,6 @@ export default function Home() {
 
         setRawData(json.data || []);
         setTotalSubmissions(json.total_submissions || 0);
-        setTotalScored(json.total_scored || 0);
         setTotalContributors(json.total_contributors || 0);
         if (json.models?.length > 0) setAvailableModels(json.models);
       } catch (err) {
@@ -88,50 +61,33 @@ export default function Home() {
     ? filters.selectedModels
     : availableModels;
 
-  // Degradation detection: pool recent vs baseline per model, then Holm-Bonferroni
-  const { degradationResults, adjustedPValues } = useMemo(() => {
-    const results = new Map<string, DegradationResult>();
-    const pValues: { key: string; p: number }[] = [];
-
-    for (const model of displayModels) {
-      const recentDays = getDayStats(chartData, model, filters.recentWindow);
-      const baselineDays = getDayStats(chartData.slice(0, -filters.recentWindow), model, filters.baselineWindow);
-
-      const recentPooled = poolStats(recentDays);
-      const baselinePooled = poolStats(baselineDays);
-
-      const result = detectDegradationFromStats(recentPooled, baselinePooled);
-      results.set(model, result);
-      pValues.push({ key: model, p: result.pValue });
-    }
-
-    const adjusted = holmBonferroni(pValues);
-    return { degradationResults: results, adjustedPValues: adjusted };
-  }, [chartData, displayModels, filters.recentWindow, filters.baselineWindow]);
-
-  // Build summary table data
-  const summaryTableData = useMemo(() => {
+  // Build model table from latest data
+  const modelTableData = useMemo(() => {
     return displayModels.map((model) => {
-      const result = degradationResults.get(model);
-      const adj = adjustedPValues.get(model);
-      const recentDays = getDayStats(chartData, model, filters.recentWindow);
-      const baselineDays = getDayStats(chartData.slice(0, -filters.recentWindow), model, filters.baselineWindow);
-      const recentPooled = poolStats(recentDays);
-      const baselinePooled = poolStats(baselineDays);
+      let totalSubs = 0;
+      let totalPrompts = 0;
+      let totalDrifted = 0;
+      let totalPromptsTested = 0;
+      let lastActive: string | null = null;
 
-      return {
-        model,
-        n: recentPooled.n,
-        baselineMean: baselinePooled.mean,
-        recentMean: recentPooled.mean,
-        delta: recentPooled.n > 0 && baselinePooled.n > 0 ? recentPooled.mean - baselinePooled.mean : null,
-        pAdjusted: adj?.adjusted ?? null,
-        significant: adj?.significant ?? false,
-        cohensD: result?.effectSize ?? null,
-        effectLabel: result?.effectLabel ?? 'negligible',
-      };
+      for (const point of chartData) {
+        const subs = point[model] as number | undefined;
+        if (subs && subs > 0) {
+          totalSubs += subs;
+          totalPrompts += (point[`${model}_prompts`] as number) || 0;
+          totalDrifted += (point[`${model}_drifted`] as number) || 0;
+          totalPromptsTested += (point[`${model}_prompts`] as number) || 0;
+          if (!lastActive || point.date > lastActive) lastActive = point.date as string;
+        }
+      }
+
+      const consistency = totalPromptsTested > 0
+        ? (totalPromptsTested - totalDrifted) / totalPromptsTested
+        : 1.0;
+
+      return { model, totalSubs, totalPrompts, consistency, lastActive };
     });
-  }, [displayModels, chartData, degradationResults, adjustedPValues, filters.recentWindow, filters.baselineWindow]);
+  }, [displayModels, chartData]);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -142,30 +98,10 @@ export default function Home() {
           <p className="text-lg text-slate-600">Crowdsourced LLM drift detection platform</p>
           <div className="flex gap-4 mt-2 text-sm text-slate-500">
             {totalSubmissions > 0 && <span>{totalSubmissions.toLocaleString()} submissions</span>}
-            {totalScored > 0 && <span>{totalScored.toLocaleString()} scored</span>}
             {displayModels.length > 0 && <span>{displayModels.length} models</span>}
             {totalContributors > 0 && <span>{totalContributors.toLocaleString()} contributors</span>}
           </div>
         </header>
-
-        {/* Model Status Bar */}
-        {!loading && !error && chartData.length > 0 && (
-          <div className="mb-6 flex flex-wrap gap-2">
-            {displayModels.map((model) => {
-              const result = degradationResults.get(model);
-              const adj = adjustedPValues.get(model);
-              if (!result) return null;
-              return (
-                <StatisticalBadge
-                  key={model}
-                  model={model}
-                  result={result}
-                  pAdjusted={adj?.adjusted}
-                />
-              );
-            })}
-          </div>
-        )}
 
         <FilterPanel
           onFilterChange={setFilters}
@@ -200,63 +136,37 @@ export default function Home() {
 
         {!loading && !error && chartData.length > 0 && (
           <>
-            {/* DriftChart */}
             <DriftChart data={chartData} models={displayModels} />
 
-            {/* Model Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-              {displayModels.map((model, idx) => (
-                <ModelSummaryCard
-                  key={model}
-                  model={model}
-                  data={chartData}
-                  color={COLORS[idx % COLORS.length]}
-                />
-              ))}
-            </div>
-
-            {/* Statistical Summary Table */}
+            {/* Model Table */}
             <div className="bg-white rounded-lg shadow-sm overflow-x-auto mt-6">
-              <h2 className="text-lg font-semibold text-slate-900 px-4 pt-4">Statistical Summary</h2>
+              <h2 className="text-lg font-semibold text-slate-900 px-4 pt-4">Models</h2>
               <table className="w-full text-sm mt-3">
                 <thead>
                   <tr className="border-b border-slate-200 text-left">
                     <th className="px-4 py-2 font-semibold text-slate-700">Model</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">n</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">Baseline</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">Recent</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">&Delta;</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">p (adj.)</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">d</th>
-                    <th className="px-4 py-2 font-semibold text-slate-700">Effect</th>
+                    <th className="px-4 py-2 font-semibold text-slate-700">Submissions</th>
+                    <th className="px-4 py-2 font-semibold text-slate-700">Prompts Tested</th>
+                    <th className="px-4 py-2 font-semibold text-slate-700">Consistency</th>
+                    <th className="px-4 py-2 font-semibold text-slate-700">Last Active</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {summaryTableData.map((row) => (
+                  {modelTableData.map((row) => (
                     <tr key={row.model} className="border-b border-slate-100">
                       <td className="px-4 py-2 font-medium text-slate-900">{row.model}</td>
-                      <td className="px-4 py-2 font-mono">{row.n}</td>
-                      <td className="px-4 py-2 font-mono">{row.baselineMean > 0 ? row.baselineMean.toFixed(3) : '—'}</td>
-                      <td className="px-4 py-2 font-mono">{row.recentMean > 0 ? row.recentMean.toFixed(3) : '—'}</td>
-                      <td className={`px-4 py-2 font-mono ${row.delta !== null && row.delta < 0 ? 'text-red-600' : row.delta !== null && row.delta > 0 ? 'text-green-600' : ''}`}>
-                        {row.delta !== null ? (row.delta > 0 ? '+' : '') + row.delta.toFixed(3) : '—'}
-                      </td>
-                      <td className="px-4 py-2 font-mono">
-                        <span className={row.significant ? 'font-bold text-red-700' : ''}>
-                          {row.pAdjusted !== null ? (row.pAdjusted < 0.001 ? '<0.001' : row.pAdjusted.toFixed(3)) : '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono">{row.cohensD !== null ? row.cohensD.toFixed(3) : '—'}</td>
+                      <td className="px-4 py-2 font-mono">{row.totalSubs}</td>
+                      <td className="px-4 py-2 font-mono">{row.totalPrompts}</td>
                       <td className="px-4 py-2">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                          row.effectLabel === 'large' ? 'bg-red-100 text-red-800' :
-                          row.effectLabel === 'medium' ? 'bg-orange-100 text-orange-800' :
-                          row.effectLabel === 'small' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
+                          row.consistency >= 0.95 ? 'bg-green-100 text-green-800' :
+                          row.consistency >= 0.80 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
                         }`}>
-                          {row.effectLabel}
+                          {(row.consistency * 100).toFixed(0)}%
                         </span>
                       </td>
+                      <td className="px-4 py-2 text-slate-600">{row.lastActive ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -265,15 +175,12 @@ export default function Home() {
           </>
         )}
 
-        {/* Methodology Panel */}
-        <MethodologyPanel />
-
         {/* About / CTA */}
         <div className="bg-white p-6 sm:p-8 rounded-lg shadow-sm mt-8">
           <h2 className="text-2xl font-bold mb-4 text-slate-900">About Pramana</h2>
           <p className="text-base text-slate-700 mb-3">
-            Pramana provides scientific data on LLM model drift through crowdsourced eval runs.
-            Statistical hypothesis testing (Welch's t-test, Cohen's d, Holm-Bonferroni correction) — not heuristics.
+            Pramana detects LLM drift through crowdsourced output consistency tracking.
+            Same prompt + same model + different output = drift detected.
           </p>
           <p className="text-base text-slate-700 mb-6">
             Run evals locally: <code className="bg-slate-800 text-slate-100 px-3 py-1.5 rounded font-mono text-sm">uvx pramana run --tier cheap --model gpt-5.2</code>

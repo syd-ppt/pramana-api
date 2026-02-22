@@ -119,25 +119,27 @@
       </div>
       <p>Returns pre-aggregated chart data. Single R2 GET, cached.</p>
 
-      <h3>Response shape (<code>ChartJson</code>)</h3>
+      <h3>Response shape</h3>
       <pre><code>{
-  "version": 2,
-  "data": {
-    "2026-02-20": {
-      "gpt-4o": { "n": 150, "mean": 0.847, "m2": 3.21, "count": 160 },
-      "claude-3.5-sonnet": { "n": 88, "mean": 0.912, "m2": 1.05, "count": 88 }
+  "data": [
+    {
+      "date": "2026-02-20",
+      "gpt-4o": 32,
+      "gpt-4o_prompts": 10,
+      "gpt-4o_unique_outputs": 10,
+      "gpt-4o_drifted": 0,
+      "gpt-4o_consistency": 1.0
     }
-  },
+  ],
   "models": ["gpt-4o", "claude-3.5-sonnet"],
   "total_submissions": 12840,
-  "total_scored": 11200,
   "total_contributors": 47
 }</code></pre>
 
       <div class="callout">
-        <strong>ModelDayStats:</strong> <code>n</code> = scored submissions, <code>mean</code> = running mean (Welford),
-        <code>m2</code> = sum of squared deviations (Welford), <code>count</code> = total including unscored.
-        Variance = m2 / (n &minus; 1). See <a href="methodology.html#welfords-online-algorithm">Welford's algorithm</a>.
+        <strong>Per model per date:</strong> <code>model</code> = submission count, <code>model_prompts</code> = unique prompts tested,
+        <code>model_unique_outputs</code> = distinct output hashes, <code>model_drifted</code> = prompts whose output changed vs previous day,
+        <code>model_consistency</code> = (prompts - drifted) / prompts. See <a href="methodology.html">Methodology</a>.
       </div>
 
       <!-- GET /api/user/me/summary -->
@@ -149,17 +151,12 @@
 
       <h3>Response shape (<code>UserSummaryJson</code>)</h3>
       <pre><code>{
-  "version": 2,
-  "date_stats": {
-    "2026-02-20": {
-      "gpt-4o": { "n": 10, "mean": 0.85, "m2": 0.42, "count": 10 }
-    }
+  "version": 3,
+  "submissions_by_date": {
+    "2026-02-20": { "gpt-4o": 10, "claude-3.5-sonnet": 5 }
   },
-  "model_stats": {
-    "gpt-4o": { "n": 340, "mean": 0.82, "m2": 18.7, "count": 350 }
-  },
-  "total_submissions": 1240,
-  "total_scored": 1100
+  "model_submissions": { "gpt-4o": 340, "claude-3.5-sonnet": 180 },
+  "total_submissions": 520
 }</code></pre>
 
       <!-- GET /api/user/me/stats -->

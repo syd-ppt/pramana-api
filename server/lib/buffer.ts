@@ -1,6 +1,6 @@
 /**
  * CSV buffer + aggregation layer.
- * Replaces lib/buffer.ts with Workers-compatible APIs:
+ * Workers-compatible APIs:
  *   - CompressionStream/DecompressionStream instead of node:zlib
  *   - Uint8Array instead of Buffer
  *   - R2 bucket binding passed as first param
@@ -22,7 +22,6 @@ import type {
   StorageRecord,
   ChartJson,
   UserSummaryJson,
-  UserSummaryV1,
   ModelDayStats,
 } from './schemas'
 
@@ -150,39 +149,6 @@ function parseCsvBody(csv: string): StorageRecord[] {
   return records
 }
 
-// -- Welford online statistics --
-
-function emptyStats(): ModelDayStats {
-  return { n: 0, mean: 0, m2: 0, count: 0 }
-}
-
-function welfordUpdate(stats: ModelDayStats, score: number | null): void {
-  stats.count++
-  if (score !== null) {
-    stats.n++
-    const delta = score - stats.mean
-    stats.mean += delta / stats.n
-    const delta2 = score - stats.mean
-    stats.m2 += delta * delta2
-  }
-}
-
-/** Merge two Welford accumulators (parallel combine). */
-export function welfordMerge(a: ModelDayStats, b: ModelDayStats): ModelDayStats {
-  const count = a.count + b.count
-  const n = a.n + b.n
-  if (n === 0) return { n: 0, mean: 0, m2: 0, count }
-  const delta = b.mean - a.mean
-  const mean = (a.n * a.mean + b.n * b.mean) / n
-  const m2 = a.m2 + b.m2 + delta * delta * (a.n * b.n) / n
-  return { n, mean, m2, count }
-}
-
-/** Compute variance from Welford accumulator. Returns 0 if n < 2. */
-export function welfordVariance(stats: ModelDayStats): number {
-  return stats.n < 2 ? 0 : stats.m2 / (stats.n - 1)
-}
-
 // -- Buffer operations --
 
 const MAX_RETRIES = 3
@@ -230,36 +196,41 @@ function userSummaryKey(userId: string): string {
   return `${USERS_PREFIX}${userId}/summary.json`
 }
 
-/** Migrate v1 user summary (count-based) to v2 (Welford stats). */
-function migrateUserSummaryV1(v1: UserSummaryV1): UserSummaryJson {
-  const v2: UserSummaryJson = {
-    version: 2,
-    date_stats: {},
-    model_stats: {},
-    total_submissions: v1.total_submissions,
-    total_scored: 0,
-  }
-  for (const [date, models] of Object.entries(v1.date_counts)) {
-    v2.date_stats[date] = {}
-    for (const [model, count] of Object.entries(models)) {
-      // No score data in v1 — only count is preserved
-      v2.date_stats[date][model] = { n: 0, mean: 0, m2: 0, count }
-      if (!v2.model_stats[model]) {
-        v2.model_stats[model] = emptyStats()
-      }
-      v2.model_stats[model].count += count
-    }
-  }
-  return v2
-}
-
-function isV1Summary(obj: unknown): obj is UserSummaryV1 {
+function isLegacySummary(obj: unknown): boolean {
   return (
     typeof obj === 'object' &&
     obj !== null &&
-    'date_counts' in obj &&
-    !('version' in obj)
+    ('version' in obj ? (obj as { version: number }).version < 3 : true)
   )
+}
+
+function migrateSummary(raw: Record<string, unknown>): UserSummaryJson {
+  // v1 had date_counts, v2 had date_stats with Welford — both migrate to v3 counts
+  const v3: UserSummaryJson = {
+    version: 3,
+    submissions_by_date: {},
+    model_submissions: {},
+    total_submissions: (raw.total_submissions as number) || 0,
+  }
+
+  // v1: date_counts: Record<string, Record<string, number>>
+  const dateCounts = raw.date_counts as Record<string, Record<string, number>> | undefined
+  // v2: date_stats: Record<string, Record<string, { count: number }>>
+  const dateStats = raw.date_stats as Record<string, Record<string, { count: number }>> | undefined
+
+  const source = dateCounts || dateStats
+  if (source) {
+    for (const [date, models] of Object.entries(source)) {
+      v3.submissions_by_date[date] = {}
+      for (const [model, val] of Object.entries(models)) {
+        const count = typeof val === 'number' ? val : (val as { count: number }).count || 0
+        v3.submissions_by_date[date][model] = count
+        v3.model_submissions[model] = (v3.model_submissions[model] || 0) + count
+      }
+    }
+  }
+
+  return v3
 }
 
 export async function updateUserSummary(
@@ -268,7 +239,7 @@ export async function updateUserSummary(
   records: StorageRecord[]
 ): Promise<UserSummaryJson> {
   if (records.length === 0) {
-    return { version: 2, date_stats: {}, model_stats: {}, total_submissions: 0, total_scored: 0 }
+    return { version: 3, submissions_by_date: {}, model_submissions: {}, total_submissions: 0 }
   }
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -278,29 +249,22 @@ export async function updateUserSummary(
     let summary: UserSummaryJson
     if (body) {
       const raw = JSON.parse(decoder.decode(body))
-      summary = isV1Summary(raw) ? migrateUserSummaryV1(raw) : raw as UserSummaryJson
+      summary = isLegacySummary(raw) ? migrateSummary(raw) : raw as UserSummaryJson
     } else {
-      summary = { version: 2, date_stats: {}, model_stats: {}, total_submissions: 0, total_scored: 0 }
+      summary = { version: 3, submissions_by_date: {}, model_submissions: {}, total_submissions: 0 }
     }
 
     for (const r of records) {
       const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
 
-      // Update date_stats
-      if (!summary.date_stats[dateStr]) summary.date_stats[dateStr] = {}
-      if (!summary.date_stats[dateStr][r.model_id]) {
-        summary.date_stats[dateStr][r.model_id] = emptyStats()
-      }
-      welfordUpdate(summary.date_stats[dateStr][r.model_id], r.score)
+      if (!summary.submissions_by_date[dateStr]) summary.submissions_by_date[dateStr] = {}
+      summary.submissions_by_date[dateStr][r.model_id] =
+        (summary.submissions_by_date[dateStr][r.model_id] || 0) + 1
 
-      // Update model_stats (all-time per-model)
-      if (!summary.model_stats[r.model_id]) {
-        summary.model_stats[r.model_id] = emptyStats()
-      }
-      welfordUpdate(summary.model_stats[r.model_id], r.score)
+      summary.model_submissions[r.model_id] =
+        (summary.model_submissions[r.model_id] || 0) + 1
 
       summary.total_submissions++
-      if (r.score !== null) summary.total_scored++
     }
 
     const buf = encoder.encode(JSON.stringify(summary))
@@ -329,47 +293,110 @@ export async function readUserSummary(
   const { body } = await downloadFileWithEtag(bucket, userSummaryKey(userId))
   if (!body) return null
   const raw = JSON.parse(decoder.decode(body))
-  return isV1Summary(raw) ? migrateUserSummaryV1(raw) : raw as UserSummaryJson
+  return isLegacySummary(raw) ? migrateSummary(raw) : raw as UserSummaryJson
 }
 
-// -- Chart JSON --
+// -- Chart JSON aggregation (hash-based output consistency) --
 
 export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
   const { body } = await downloadFileWithEtag(bucket, CHART_KEY)
-  if (!body) return { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0, total_contributors: 0 }
+  if (!body) return { version: 3, data: {}, models: [], total_submissions: 0, total_contributors: 0 }
   return JSON.parse(decoder.decode(body)) as ChartJson
 }
 
-function aggregateRecords(records: StorageRecord[], into: ChartJson): void {
-  for (const r of records) {
-    const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
-    if (!into.data[dateStr]) into.data[dateStr] = {}
-    if (!into.data[dateStr][r.model_id]) {
-      into.data[dateStr][r.model_id] = emptyStats()
-    }
-    welfordUpdate(into.data[dateStr][r.model_id], r.score)
-    into.total_submissions++
-    if (r.score !== null) into.total_scored++
-    if (!into.models.includes(r.model_id)) into.models.push(r.model_id)
-  }
-}
-
+/**
+ * Rebuild chart_data.json from all archive CSVs.
+ * Tracks hash-based output consistency:
+ *   - prevHash: last-seen output_hash per (model_id, prompt_id)
+ *   - A prompt "drifted" if its hash differs from the previous day's hash
+ */
 export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
-  const chart: ChartJson = { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0, total_contributors: 0 }
-
+  // 1. Load all archive records
+  const allRecords: StorageRecord[] = []
   const archiveKeys = await listFiles(bucket, ARCHIVE_PREFIX)
   for (const key of archiveKeys) {
     if (!key.endsWith('.csv.gz')) continue
     const buf = await downloadFile(bucket, key)
     const csv = decoder.decode(await gunzip(buf))
-    aggregateRecords(parseCsvBody(csv), chart)
+    allRecords.push(...parseCsvBody(csv))
   }
 
-  // Count unique contributors from user summary files
-  const userKeys = await listFiles(bucket, USERS_PREFIX)
-  chart.total_contributors = userKeys.filter(k => k.endsWith('/summary.json')).length
+  // 2. Sort by date
+  allRecords.sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year
+    if (a.month !== b.month) return a.month - b.month
+    return a.day - b.day
+  })
 
-  chart.models.sort()
+  // 3. Group by (date, model)
+  const grouped = new Map<string, Map<string, StorageRecord[]>>()
+  const modelSet = new Set<string>()
+  for (const r of allRecords) {
+    const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
+    if (!grouped.has(dateStr)) grouped.set(dateStr, new Map())
+    const dateMap = grouped.get(dateStr)!
+    if (!dateMap.has(r.model_id)) dateMap.set(r.model_id, [])
+    dateMap.get(r.model_id)!.push(r)
+    modelSet.add(r.model_id)
+  }
+
+  // 4. Compute stats with drift tracking
+  const prevHash = new Map<string, string>() // `${model}|${prompt}` → last hash
+  const data: Record<string, Record<string, ModelDayStats>> = {}
+  let totalSubmissions = 0
+
+  const sortedDates = Array.from(grouped.keys()).sort()
+  for (const date of sortedDates) {
+    data[date] = {}
+    const dateMap = grouped.get(date)!
+
+    for (const [model, records] of dateMap) {
+      const promptIds = new Set<string>()
+      const outputHashes = new Set<string>()
+      let drifted = 0
+
+      for (const r of records) {
+        promptIds.add(r.prompt_id)
+        outputHashes.add(r.output_hash)
+      }
+
+      // Check drift: for each prompt, compare latest hash to prevHash
+      const promptLatestHash = new Map<string, string>()
+      for (const r of records) {
+        promptLatestHash.set(r.prompt_id, r.output_hash)
+      }
+
+      for (const [prompt, hash] of promptLatestHash) {
+        const key = `${model}|${prompt}`
+        const prev = prevHash.get(key)
+        if (prev !== undefined && prev !== hash) {
+          drifted++
+        }
+        prevHash.set(key, hash)
+      }
+
+      data[date][model] = {
+        submissions: records.length,
+        prompts_tested: promptIds.size,
+        unique_outputs: outputHashes.size,
+        drifted_prompts: drifted,
+      }
+      totalSubmissions += records.length
+    }
+  }
+
+  // 5. Count contributors
+  const userKeys = await listFiles(bucket, USERS_PREFIX)
+  const totalContributors = userKeys.filter(k => k.endsWith('/summary.json')).length
+
+  const chart: ChartJson = {
+    version: 3,
+    data,
+    models: Array.from(modelSet).sort(),
+    total_submissions: totalSubmissions,
+    total_contributors: totalContributors,
+  }
+
   await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
 }
 

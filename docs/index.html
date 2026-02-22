@@ -7,7 +7,7 @@
   <meta name="description" content="Pramana API and dashboard: submission, aggregation, and drift detection for LLM eval results.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Pramana — LLM Drift Detection">
-  <meta property="og:description" content="Track LLM performance drift with statistical rigor. Open-source CLI + dashboard.">
+  <meta property="og:description" content="Track LLM output consistency drift. Open-source CLI + dashboard.">
   <meta property="og:image" content="https://syd-ppt.github.io/pramana-api/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="https://syd-ppt.github.io/pramana-api/og-image.png">
@@ -77,7 +77,7 @@
 
       <h2>Data Flow</h2>
       <ol>
-        <li><code>POST /api/submit</code> — CLI sends scored results</li>
+        <li><code>POST /api/submit</code> — CLI sends eval results</li>
         <li>Append to gzip-compressed CSV buffer in R2</li>
         <li>Update per-user summary (real-time)</li>
         <li>Daily cron compacts buffer → archive, rebuilds aggregate chart data</li>
@@ -88,7 +88,7 @@
       <ul>
         <li><strong>Stateless API</strong> — no database, no connection pools. CSV + JSON on R2.</li>
         <li><strong>Append-only</strong> — immutable results. No edits, no deletes of submissions.</li>
-        <li><strong>Incremental statistics</strong> — Welford's algorithm: O(1) storage per group.</li>
+        <li><strong>Hash-based drift detection</strong> — output consistency tracking via SHA-256 hashes.</li>
         <li><strong>Zero cost</strong> — Cloudflare Pages free tier + R2 free tier = $0/month.</li>
         <li><strong>Privacy-preserving</strong> — individual submissions cannot be reconstructed from aggregates.</li>
       </ul>
@@ -101,7 +101,7 @@
           <tr><td>Dashboard</td><td>Vite SPA (React + react-router)</td></tr>
           <tr><td>Storage</td><td>Cloudflare R2 (native bindings, no S3 SDK)</td></tr>
           <tr><td>Auth</td><td>jose JWT + OAuth (GitHub, Google)</td></tr>
-          <tr><td>Statistics</td><td>Welch's t-test, Cohen's d, Holm-Bonferroni, Welford's</td></tr>
+          <tr><td>Drift Detection</td><td>SHA-256 output hashing, per-prompt consistency tracking</td></tr>
         </tbody>
       </table>
 

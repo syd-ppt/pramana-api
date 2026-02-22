@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Submission API with append-only storage
 - Dashboard with drift visualization
-- Welch's t-test degradation detection
+- Hash-based output consistency drift detection
 - GitHub/Google OAuth authentication
 - GDPR-compliant user data deletion
 - Daily cron compaction
