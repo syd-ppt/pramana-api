@@ -8,7 +8,7 @@ import {
   BatchSubmissionRequestSchema,
   type StorageRecord,
 } from '../lib/schemas'
-import { appendToCsvBuffer, updateUserSummary, rebuildChartJson } from '../lib/buffer'
+import { appendToCsvBuffer, updateUserSummary, writeDelta } from '../lib/buffer'
 
 type Env = {
   Bindings: { PRAMANA_DATA: R2Bucket; JWT_SECRET: string }
@@ -117,8 +117,8 @@ export const submitRoutes = new Hono<Env>()
       updateUserSummary(bucket, userId, records),
     ])
 
-    // Rebuild chart data so dashboard reflects new submissions immediately
-    c.executionCtx.waitUntil(rebuildChartJson(bucket))
+    // Write delta for incremental chart aggregation (merged by cron)
+    c.executionCtx.waitUntil(writeDelta(bucket, records))
 
     return c.json({
       status: 'completed',

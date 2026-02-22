@@ -54,11 +54,28 @@ export interface ModelDayStats {
 
 /** Aggregated chart data stored as _aggregated/chart_data.json */
 export interface ChartJson {
-  version: 3;
+  version: 4;
   data: Record<string, Record<string, ModelDayStats>>;  // date → model → stats
   models: string[];
   total_submissions: number;
   total_contributors: number;
+  _prev_hashes: Record<string, string>;   // "model|prompt" → last output_hash
+  _known_users: string[];                  // deduplicated contributor list
+}
+
+/** Delta record written per submit for incremental chart aggregation */
+export interface DeltaRecord {
+  model_id: string;
+  prompt_id: string;
+  output_hash: string;
+  user_id: string;
+}
+
+/** Delta file written to _deltas/{day}/{timestamp}_{random}.json */
+export interface ChartDelta {
+  ts: number;         // Date.now()
+  day: string;        // "YYYY-MM-DD"
+  records: DeltaRecord[];
 }
 
 /** Per-user summary stored as _users/{user_id}/summary.json */

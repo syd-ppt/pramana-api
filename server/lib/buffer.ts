@@ -17,18 +17,22 @@ import {
   uploadFileConditional,
   listFiles,
   downloadFile,
+  deleteFiles,
 } from './storage'
 import type {
   StorageRecord,
   ChartJson,
   UserSummaryJson,
   ModelDayStats,
+  ChartDelta,
+  DeltaRecord,
 } from './schemas'
 
 const BUFFER_KEY = '_buffer/buffer.csv.gz'
 const CHART_KEY = '_aggregated/chart_data.json'
 const ARCHIVE_PREFIX = '_archive/'
 const USERS_PREFIX = '_users/'
+const DELTAS_PREFIX = '_deltas/'
 
 const CSV_HEADERS =
   'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day,score'
@@ -300,8 +304,132 @@ export async function readUserSummary(
 
 export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
   const { body } = await downloadFileWithEtag(bucket, CHART_KEY)
-  if (!body) return { version: 3, data: {}, models: [], total_submissions: 0, total_contributors: 0 }
-  return JSON.parse(decoder.decode(body)) as ChartJson
+  if (!body) return { version: 4, data: {}, models: [], total_submissions: 0, total_contributors: 0, _prev_hashes: {}, _known_users: [] }
+  const parsed = JSON.parse(decoder.decode(body))
+  // Migrate v3 → v4 on read
+  if (!parsed._prev_hashes) parsed._prev_hashes = {}
+  if (!parsed._known_users) parsed._known_users = []
+  parsed.version = 4
+  return parsed as ChartJson
+}
+
+// -- Delta operations --
+
+/**
+ * Write a delta file for incremental chart aggregation.
+ * O(1) R2 PUT, no reads — safe for concurrent submits.
+ */
+export async function writeDelta(
+  bucket: R2Bucket,
+  records: StorageRecord[]
+): Promise<void> {
+  if (records.length === 0) return
+
+  const now = new Date()
+  const day = now.toISOString().split('T')[0]
+  const ts = now.getTime()
+  const rand = Math.random().toString(36).slice(2, 8)
+  const key = `${DELTAS_PREFIX}${day}/${ts}_${rand}.json`
+
+  const delta: ChartDelta = {
+    ts,
+    day,
+    records: records.map((r): DeltaRecord => ({
+      model_id: r.model_id,
+      prompt_id: r.prompt_id,
+      output_hash: r.output_hash,
+      user_id: r.user_id,
+    })),
+  }
+
+  await uploadFile(bucket, key, encoder.encode(JSON.stringify(delta)))
+}
+
+/**
+ * Merge delta files into existing chart_data.json.
+ * O(deltas) R2 ops — does NOT read archives.
+ */
+export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }> {
+  // 1. Read current chart
+  const chart = await readChartJson(bucket)
+
+  // 2. List all delta files
+  const deltaKeys = await listFiles(bucket, DELTAS_PREFIX)
+  if (deltaKeys.length === 0) return { merged: 0 }
+
+  // 3. Read and parse all deltas
+  const deltas: ChartDelta[] = []
+  for (const key of deltaKeys) {
+    const buf = await downloadFile(bucket, key)
+    deltas.push(JSON.parse(decoder.decode(buf)) as ChartDelta)
+  }
+
+  // 4. Sort chronologically
+  deltas.sort((a, b) => a.ts - b.ts)
+
+  // 5. Merge into chart
+  const modelSet = new Set(chart.models)
+  const knownUsers = new Set(chart._known_users)
+
+  for (const delta of deltas) {
+    const day = delta.day
+    if (!chart.data[day]) chart.data[day] = {}
+
+    // Group delta records by model
+    const byModel = new Map<string, DeltaRecord[]>()
+    for (const r of delta.records) {
+      if (!byModel.has(r.model_id)) byModel.set(r.model_id, [])
+      byModel.get(r.model_id)!.push(r)
+      modelSet.add(r.model_id)
+      knownUsers.add(r.user_id)
+    }
+
+    for (const [model, records] of byModel) {
+      const existing: ModelDayStats = chart.data[day][model] || {
+        submissions: 0,
+        prompts_tested: 0,
+        unique_outputs: 0,
+        drifted_prompts: 0,
+      }
+
+      // Track per-prompt hashes for this day+model to compute stats
+      const promptHashes = new Map<string, Set<string>>()
+      let newDrifted = 0
+
+      for (const r of records) {
+        const prevKey = `${model}|${r.prompt_id}`
+        const prevHash = chart._prev_hashes[prevKey]
+
+        if (prevHash !== undefined && prevHash !== r.output_hash) {
+          newDrifted++
+        }
+        chart._prev_hashes[prevKey] = r.output_hash
+
+        if (!promptHashes.has(r.prompt_id)) promptHashes.set(r.prompt_id, new Set())
+        promptHashes.get(r.prompt_id)!.add(r.output_hash)
+      }
+
+      existing.submissions += records.length
+      existing.prompts_tested += promptHashes.size  // new prompts in this delta
+      existing.unique_outputs += Array.from(promptHashes.values()).reduce((sum, s) => sum + s.size, 0)
+      existing.drifted_prompts += newDrifted
+      chart.data[day][model] = existing
+
+      chart.total_submissions += records.length
+    }
+  }
+
+  chart.models = Array.from(modelSet).sort()
+  chart._known_users = Array.from(knownUsers)
+  chart.total_contributors = knownUsers.size
+
+  // 6. Write updated chart
+  await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
+
+  // 7. Delete processed deltas
+  await deleteFiles(bucket, deltaKeys)
+
+  return { merged: deltas.length }
 }
 
 /**
@@ -348,9 +476,10 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
   }
 
   // 4. Compute stats with drift tracking
-  const prevHash = new Map<string, string>() // `${model}|${prompt}` → last hash
+  const prevHashMap = new Map<string, string>() // `${model}|${prompt}` → last hash
   const data: Record<string, Record<string, ModelDayStats>> = {}
   let totalSubmissions = 0
+  const userSet = new Set<string>()
 
   const sortedDates = Array.from(grouped.keys()).sort()
   for (const date of sortedDates) {
@@ -365,6 +494,7 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
       for (const r of records) {
         promptIds.add(r.prompt_id)
         outputHashes.add(r.output_hash)
+        userSet.add(r.user_id)
       }
 
       // Check drift: for each prompt, compare latest hash to prevHash
@@ -375,11 +505,11 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
 
       for (const [prompt, hash] of promptLatestHash) {
         const key = `${model}|${prompt}`
-        const prev = prevHash.get(key)
+        const prev = prevHashMap.get(key)
         if (prev !== undefined && prev !== hash) {
           drifted++
         }
-        prevHash.set(key, hash)
+        prevHashMap.set(key, hash)
       }
 
       data[date][model] = {
@@ -392,16 +522,20 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     }
   }
 
-  // 5. Count contributors
-  const userKeys = await listFiles(bucket, USERS_PREFIX)
-  const totalContributors = userKeys.filter(k => k.endsWith('/summary.json')).length
+  // 5. Build v4 chart with _prev_hashes and _known_users
+  const prevHashes: Record<string, string> = {}
+  for (const [k, v] of prevHashMap) prevHashes[k] = v
+
+  const knownUsers = Array.from(userSet)
 
   const chart: ChartJson = {
-    version: 3,
+    version: 4,
     data,
     models: Array.from(modelSet).sort(),
     total_submissions: totalSubmissions,
-    total_contributors: totalContributors,
+    total_contributors: knownUsers.length,
+    _prev_hashes: prevHashes,
+    _known_users: knownUsers,
   }
 
   await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
@@ -411,32 +545,35 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
 
 export async function compactBuffer(
   bucket: R2Bucket
-): Promise<{ archived: number; chartRebuilt: boolean }> {
+): Promise<{ archived: number; deltasMerged: number }> {
+  // 1. Archive buffer
   const { body } = await downloadFileWithEtag(bucket, BUFFER_KEY)
-  if (!body) return { archived: 0, chartRebuilt: false }
+  let archived = 0
+  if (body) {
+    const csv = decoder.decode(await gunzip(body))
+    const records = parseCsvBody(csv)
+    if (records.length > 0) {
+      const today = new Date().toISOString().split('T')[0]
+      const archiveKey = `${ARCHIVE_PREFIX}${today}.csv.gz`
 
-  const csv = decoder.decode(await gunzip(body))
-  const records = parseCsvBody(csv)
-  if (records.length === 0) return { archived: 0, chartRebuilt: false }
-
-  const today = new Date().toISOString().split('T')[0]
-  const archiveKey = `${ARCHIVE_PREFIX}${today}.csv.gz`
-
-  const { body: existingArchive } = await downloadFileWithEtag(bucket, archiveKey)
-  let archiveCsv: string
-  if (existingArchive) {
-    const existing = decoder.decode(await gunzip(existingArchive))
-    archiveCsv = existing.trimEnd() + '\n' + records.map(recordToCsvRow).join('\n')
-  } else {
-    archiveCsv = CSV_HEADERS + '\n' + records.map(recordToCsvRow).join('\n')
+      const { body: existingArchive } = await downloadFileWithEtag(bucket, archiveKey)
+      let archiveCsv: string
+      if (existingArchive) {
+        const existing = decoder.decode(await gunzip(existingArchive))
+        archiveCsv = existing.trimEnd() + '\n' + records.map(recordToCsvRow).join('\n')
+      } else {
+        archiveCsv = CSV_HEADERS + '\n' + records.map(recordToCsvRow).join('\n')
+      }
+      await uploadFile(bucket, archiveKey, await gzip(encoder.encode(archiveCsv)))
+      await uploadFile(bucket, BUFFER_KEY, await gzip(encoder.encode(CSV_HEADERS + '\n')))
+      archived = records.length
+    }
   }
-  await uploadFile(bucket, archiveKey, await gzip(encoder.encode(archiveCsv)))
 
-  await uploadFile(bucket, BUFFER_KEY, await gzip(encoder.encode(CSV_HEADERS + '\n')))
+  // 2. Merge deltas into chart (O(deltas), not O(archives))
+  const { merged } = await mergeDeltas(bucket)
 
-  await rebuildChartJson(bucket)
-
-  return { archived: records.length, chartRebuilt: true }
+  return { archived, deltasMerged: merged }
 }
 
 // -- GDPR helpers --

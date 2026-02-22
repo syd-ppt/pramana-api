@@ -28,7 +28,12 @@ export async function uploadFileConditional(
   body: Uint8Array,
   etag: string
 ): Promise<void> {
-  await bucket.put(key, body, { onlyIf: { etagMatches: etag } });
+  const result = await bucket.put(key, body, { onlyIf: { etagMatches: etag } });
+  if (result === null) {
+    const err = new Error(`Precondition failed: ${key}`) as Error & { status: number };
+    err.status = 412;
+    throw err;
+  }
 }
 
 export async function listFiles(

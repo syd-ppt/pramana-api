@@ -8,23 +8,32 @@ vi.mock('./storage', () => ({
   uploadFileConditional: vi.fn(),
   listFiles: vi.fn(),
   downloadFile: vi.fn(),
+  deleteFiles: vi.fn(),
 }))
 
 import {
   appendToCsvBuffer,
   updateUserSummary,
   readChartJson,
+  writeDelta,
+  mergeDeltas,
   deleteUserFromBuffer,
 } from './buffer'
 import {
   downloadFileWithEtag,
   uploadFile,
   uploadFileConditional,
+  listFiles,
+  downloadFile,
+  deleteFiles,
 } from './storage'
 
 const mockDownloadFileWithEtag = vi.mocked(downloadFileWithEtag)
 const mockUploadFile = vi.mocked(uploadFile)
 const mockUploadFileConditional = vi.mocked(uploadFileConditional)
+const mockListFiles = vi.mocked(listFiles)
+const mockDownloadFile = vi.mocked(downloadFile)
+const mockDeleteFiles = vi.mocked(deleteFiles)
 
 // Compression helpers using Web APIs (matching what buffer.ts uses)
 async function gzip(data: Uint8Array): Promise<Uint8Array> {
@@ -221,16 +230,18 @@ describe('updateUserSummary', () => {
 })
 
 describe('readChartJson', () => {
-  it('returns empty v3 structure when file missing', async () => {
+  it('returns empty v4 structure when file missing', async () => {
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     const chart = await readChartJson(fakeBucket)
-    expect(chart.version).toBe(3)
+    expect(chart.version).toBe(4)
     expect(chart.data).toEqual({})
     expect(chart.models).toEqual([])
     expect(chart.total_submissions).toBe(0)
+    expect(chart._prev_hashes).toEqual({})
+    expect(chart._known_users).toEqual([])
   })
 
-  it('parses existing chart JSON', async () => {
+  it('migrates v3 chart to v4 on read', async () => {
     const json = JSON.stringify({
       version: 3,
       data: {
@@ -248,9 +259,145 @@ describe('readChartJson', () => {
     })
 
     const chart = await readChartJson(fakeBucket)
+    expect(chart.version).toBe(4)
+    expect(chart._prev_hashes).toEqual({})
+    expect(chart._known_users).toEqual([])
     expect(chart.total_submissions).toBe(5)
     expect(chart.data['2026-02-21']['gpt-5'].submissions).toBe(5)
-    expect(chart.data['2026-02-21']['gpt-5'].drifted_prompts).toBe(0)
+  })
+
+  it('parses existing v4 chart JSON', async () => {
+    const json = JSON.stringify({
+      version: 4,
+      data: {
+        '2026-02-21': {
+          'gpt-5': { submissions: 5, prompts_tested: 3, unique_outputs: 3, drifted_prompts: 0 }
+        }
+      },
+      models: ['gpt-5'],
+      total_submissions: 5,
+      total_contributors: 1,
+      _prev_hashes: { 'gpt-5|prompt1': 'sha256:abc' },
+      _known_users: ['user1'],
+    })
+    mockDownloadFileWithEtag.mockResolvedValue({
+      body: encoder.encode(json),
+      etag: '"e1"',
+    })
+
+    const chart = await readChartJson(fakeBucket)
+    expect(chart.version).toBe(4)
+    expect(chart._prev_hashes['gpt-5|prompt1']).toBe('sha256:abc')
+    expect(chart._known_users).toEqual(['user1'])
+  })
+})
+
+describe('writeDelta', () => {
+  it('writes a delta file to _deltas/{day}/', async () => {
+    mockUploadFile.mockResolvedValue(undefined)
+
+    await writeDelta(fakeBucket, [makeRecord()])
+
+    expect(mockUploadFile).toHaveBeenCalledTimes(1)
+    const [, key, body] = mockUploadFile.mock.calls[0]
+    expect(key).toMatch(/^_deltas\/\d{4}-\d{2}-\d{2}\/\d+_[a-z0-9]+\.json$/)
+
+    const delta = JSON.parse(decoder.decode(body))
+    expect(delta.records).toHaveLength(1)
+    expect(delta.records[0].model_id).toBe('gpt-5')
+    expect(delta.records[0].prompt_id).toBe('prompt1')
+    expect(delta.records[0].output_hash).toBe('sha256:abc')
+    expect(delta.records[0].user_id).toBe('user1')
+    expect(delta.day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(typeof delta.ts).toBe('number')
+  })
+
+  it('skips when no records', async () => {
+    await writeDelta(fakeBucket, [])
+    expect(mockUploadFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('mergeDeltas', () => {
+  it('returns merged=0 when no deltas exist', async () => {
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+    mockListFiles.mockResolvedValue([])
+
+    const result = await mergeDeltas(fakeBucket)
+    expect(result.merged).toBe(0)
+  })
+
+  it('merges single delta into empty chart', async () => {
+    // Empty chart
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+
+    // One delta file
+    const delta = {
+      ts: 1000,
+      day: '2026-02-21',
+      records: [
+        { model_id: 'gpt-5', prompt_id: 'p1', output_hash: 'sha256:abc', user_id: 'user1' },
+        { model_id: 'gpt-5', prompt_id: 'p2', output_hash: 'sha256:def', user_id: 'user1' },
+      ],
+    }
+    mockListFiles.mockResolvedValue(['_deltas/2026-02-21/1000_abc123.json'])
+    mockDownloadFile.mockResolvedValue(encoder.encode(JSON.stringify(delta)))
+    mockUploadFile.mockResolvedValue(undefined)
+    mockDeleteFiles.mockResolvedValue(undefined)
+
+    const result = await mergeDeltas(fakeBucket)
+    expect(result.merged).toBe(1)
+
+    // Verify chart written
+    expect(mockUploadFile).toHaveBeenCalledTimes(1)
+    const [, key, body] = mockUploadFile.mock.calls[0]
+    expect(key).toBe('_aggregated/chart_data.json')
+
+    const chart = JSON.parse(decoder.decode(body))
+    expect(chart.version).toBe(4)
+    expect(chart.data['2026-02-21']['gpt-5'].submissions).toBe(2)
+    expect(chart.data['2026-02-21']['gpt-5'].prompts_tested).toBe(2)
+    expect(chart.models).toEqual(['gpt-5'])
+    expect(chart._known_users).toEqual(['user1'])
+    expect(chart.total_contributors).toBe(1)
+    expect(chart._prev_hashes['gpt-5|p1']).toBe('sha256:abc')
+    expect(chart._prev_hashes['gpt-5|p2']).toBe('sha256:def')
+
+    // Verify deltas deleted
+    expect(mockDeleteFiles).toHaveBeenCalledWith(fakeBucket, ['_deltas/2026-02-21/1000_abc123.json'])
+  })
+
+  it('detects drift when hash changes', async () => {
+    // Existing chart with prev_hashes
+    const existingChart = JSON.stringify({
+      version: 4,
+      data: { '2026-02-20': { 'gpt-5': { submissions: 1, prompts_tested: 1, unique_outputs: 1, drifted_prompts: 0 } } },
+      models: ['gpt-5'],
+      total_submissions: 1,
+      total_contributors: 1,
+      _prev_hashes: { 'gpt-5|p1': 'sha256:old' },
+      _known_users: ['user1'],
+    })
+    mockDownloadFileWithEtag.mockResolvedValue({ body: encoder.encode(existingChart), etag: '"e1"' })
+
+    // Delta with changed hash for same prompt
+    const delta = {
+      ts: 2000,
+      day: '2026-02-21',
+      records: [
+        { model_id: 'gpt-5', prompt_id: 'p1', output_hash: 'sha256:new', user_id: 'user1' },
+      ],
+    }
+    mockListFiles.mockResolvedValue(['_deltas/2026-02-21/2000_xyz.json'])
+    mockDownloadFile.mockResolvedValue(encoder.encode(JSON.stringify(delta)))
+    mockUploadFile.mockResolvedValue(undefined)
+    mockDeleteFiles.mockResolvedValue(undefined)
+
+    await mergeDeltas(fakeBucket)
+
+    const chart = JSON.parse(decoder.decode(mockUploadFile.mock.calls[0][2]))
+    expect(chart.data['2026-02-21']['gpt-5'].drifted_prompts).toBe(1)
+    expect(chart._prev_hashes['gpt-5|p1']).toBe('sha256:new')
   })
 })
 
