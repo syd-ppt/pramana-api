@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pramana — LLM Drift Detection</title>
+  <meta name="description" content="Open-source LLM drift detection. Track model performance over time with statistical rigor."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:title" content="Pramana — LLM Drift Detection"/>
+  <meta property="og:description" content="Track LLM performance drift with statistical rigor. Open-source CLI + dashboard."/>
+  <meta property="og:image" content="https://syd-ppt.github.io/pramana-api/og-image.png"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:image" content="https://syd-ppt.github.io/pramana-api/og-image.png"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav>
+    <a href="./" class="brand">Pramana</a>
+    <a href="getting-started.html">Getting Started</a>
+    <a href="api.html">API</a>
+    <a href="methodology.html">Methodology</a>
+    <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
+    <a href="https://pramana.pages.dev">Dashboard</a>
+  </nav>
+
+  <div class="container">
+    <h1>Pramana</h1>
+    <p class="subtitle">Open-source LLM drift detection</p>
+
+    <h2>The Problem</h2>
+    <p>
+      LLM behavior changes silently. Provider updates, quantization changes, and infrastructure migrations
+      alter model outputs without notice. Chen et al. (2023) documented this empirically: GPT-4's accuracy
+      on identifying prime numbers dropped from 97.6% to 2.4% between March and June 2023.
+      <a href="https://arxiv.org/abs/2307.09009">How Is ChatGPT's Behavior Changing over Time?</a> (Stanford/Berkeley)
+      demonstrated that drift is real, measurable, and consequential.
+    </p>
+    <p>
+      If your application depends on LLM outputs — classification, extraction, generation — you need
+      continuous monitoring, not one-time benchmarks.
+    </p>
+
+    <h2>What Pramana Does</h2>
+    <p>
+      Pramana is a lightweight eval submission and drift detection system. It consists of two components:
+    </p>
+    <ul>
+      <li><strong>CLI</strong> (<code>pramana</code>) — runs eval suites locally, scores outputs, submits results</li>
+      <li><strong>API + Dashboard</strong> (this repo) — stores submissions, aggregates statistics, detects drift</li>
+    </ul>
+    <p>
+      Detection uses Welch's t-test with Cohen's d effect size and Holm-Bonferroni correction for
+      multiple comparisons. All statistics are computed incrementally via Welford's online algorithm —
+      no raw data is retained.
+    </p>
+
+    <h2>How It Works</h2>
+    <pre><code># Install the CLI
+pip install pramana
+
+# Run evals against a model
+pramana run --model gpt-4o --suite my_evals/
+
+# Submit results
+pramana submit
+
+# View drift dashboard
+open https://pramana.pages.dev</code></pre>
+
+    <h2>Data Flow</h2>
+    <p>Each submission follows this path:</p>
+    <ol>
+      <li><code>POST /api/submit</code> — CLI sends scored results</li>
+      <li>Append to gzip-compressed CSV buffer in R2</li>
+      <li>Update per-user summary (real-time)</li>
+      <li>Daily cron compacts buffer → archive, rebuilds aggregate chart data</li>
+      <li>Dashboard reads pre-aggregated JSON (single R2 GET, &lt;50ms)</li>
+    </ol>
+
+    <h2>Design Decisions</h2>
+    <ul>
+      <li><strong>Stateless API</strong> — no database, no connection pools. CSV + JSON on R2.</li>
+      <li><strong>Append-only</strong> — immutable results. No edits, no deletes of submissions.</li>
+      <li><strong>Incremental statistics</strong> — Welford's algorithm: O(1) storage per group.</li>
+      <li><strong>Zero cost</strong> — Cloudflare Pages free tier + R2 free tier = $0/month.</li>
+      <li><strong>Privacy-preserving</strong> — individual submissions cannot be reconstructed from aggregates.</li>
+    </ul>
+
+    <h2>Architecture</h2>
+    <pre><code>┌──────────┐    POST /api/submit    ┌──────────────┐    R2    ┌─────────────┐
+│ CLI      │───────────────────────▸│ Hono API     │────────▸│ buffer.csv  │
+│ (pramana)│                        │ (CF Workers) │         │ user/*.json │
+└──────────┘                        └──────┬───────┘         └──────┬──────┘
+                                           │ cron                   │
+                                           ▼                        ▼
+                                    ┌──────────────┐         ┌─────────────┐
+                                    │ compact      │────────▸│ chart.json  │
+                                    │ + aggregate  │         │ archive/*.gz│
+                                    └──────────────┘         └──────┬──────┘
+                                                                    │
+┌──────────┐    GET /api/data/chart                                 │
+│ Dashboard│◂───────────────────────────────────────────────────────┘
+│ (Vite)   │
+└──────────┘</code></pre>
+
+    <footer>
+      Pramana is open source under the MIT License.
+      <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
+    </footer>
+  </div>
+</body>
+</html>

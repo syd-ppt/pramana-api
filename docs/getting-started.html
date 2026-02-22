@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Getting Started — Pramana</title>
+  <meta name="description" content="Install Pramana CLI, run eval suites, submit results, authenticate, and view drift dashboard."/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav>
+    <a href="./" class="brand">Pramana</a>
+    <a href="getting-started.html" aria-current="page">Getting Started</a>
+    <a href="api.html">API</a>
+    <a href="methodology.html">Methodology</a>
+    <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
+    <a href="https://pramana.pages.dev">Dashboard</a>
+  </nav>
+
+  <div class="container">
+    <h1>Getting Started</h1>
+    <p class="subtitle">From install to first submission in under 5 minutes</p>
+
+    <h2>1. Install the CLI</h2>
+    <pre><code>pip install pramana</code></pre>
+    <p>Requires Python 3.10+. The CLI is distributed via <a href="https://pypi.org/project/pramana/">PyPI</a>.</p>
+
+    <h2>2. Write an Eval Suite</h2>
+    <p>
+      An eval suite is a directory of YAML files, each defining a prompt and expected behavior.
+      Pramana executes each prompt against the target model and scores the output.
+    </p>
+    <pre><code># evals/factuality/capital.yaml
+prompt: "What is the capital of France?"
+expected: "Paris"
+scorer: exact_match</code></pre>
+
+    <pre><code># evals/factuality/population.yaml
+prompt: "What is the approximate population of Tokyo?"
+expected_contains: ["37 million", "37M", "38 million"]
+scorer: contains_any</code></pre>
+
+    <h2>3. Run Evals</h2>
+    <pre><code># Run against a specific model
+pramana run --model gpt-4o --suite evals/factuality/
+
+# Run with specific temperature
+pramana run --model claude-3.5-sonnet --suite evals/ --temperature 0.0
+
+# Run multiple models
+pramana run --model gpt-4o --model claude-3.5-sonnet --suite evals/</code></pre>
+
+    <p>
+      Results are stored locally in <code>.pramana/results/</code> until submitted.
+    </p>
+
+    <h2>4. Submit Results</h2>
+    <pre><code># Submit all pending results
+pramana submit
+
+# Submit results for a specific run
+pramana submit --run-id abc123</code></pre>
+
+    <p>
+      Submissions go to <code>POST /api/submit/batch</code>. Each batch includes the suite version,
+      content hash, model ID, temperature, and all scored results.
+    </p>
+
+    <h2>5. Authenticate (Optional)</h2>
+    <p>
+      Anonymous submissions work but are attributed to a shared <code>anonymous</code> user.
+      Authenticate to track your personal contribution stats.
+    </p>
+
+    <pre><code># Open browser to authenticate
+pramana auth login
+
+# Or use a CLI token from the dashboard
+pramana auth token &lt;your-token&gt;</code></pre>
+
+    <p>
+      Authentication uses OAuth (GitHub or Google) via the dashboard at
+      <a href="https://pramana.pages.dev/signin">pramana.pages.dev/signin</a>.
+      The CLI stores the JWT token locally in <code>~/.config/pramana/auth.json</code>.
+    </p>
+
+    <h2>6. View the Dashboard</h2>
+    <p>
+      Open <a href="https://pramana.pages.dev">pramana.pages.dev</a> to see aggregated drift charts.
+      The dashboard shows:
+    </p>
+    <ul>
+      <li>Mean score over time per model, with Wilson confidence intervals</li>
+      <li>Statistical degradation badges (Welch's t-test + Cohen's d)</li>
+      <li>Contribution counts and unique contributor stats</li>
+    </ul>
+    <p>
+      Authenticated users can view personal stats at
+      <a href="https://pramana.pages.dev/my-stats">pramana.pages.dev/my-stats</a>.
+    </p>
+
+    <h2>7. Automate with CI</h2>
+    <p>
+      Run evals on every commit or on a schedule to catch drift early.
+    </p>
+    <pre><code># .github/workflows/eval.yml
+name: LLM Evals
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pramana
+      - run: pramana auth token ${{ secrets.PRAMANA_TOKEN }}
+      - run: pramana run --model gpt-4o --suite evals/
+      - run: pramana submit</code></pre>
+
+    <h2>Configuration</h2>
+    <p>
+      The CLI reads configuration from <code>pramana.toml</code> in your project root:
+    </p>
+    <pre><code># pramana.toml
+[default]
+suite = "evals/"
+models = ["gpt-4o", "claude-3.5-sonnet"]
+temperature = 0.0
+
+[submit]
+endpoint = "https://pramana.pages.dev/api"</code></pre>
+
+    <h2>Next Steps</h2>
+    <ul>
+      <li><a href="api.html">API Reference</a> — endpoint schemas and response shapes</li>
+      <li><a href="methodology.html">Methodology</a> — statistical methods behind drift detection</li>
+      <li><a href="https://github.com/syd-ppt/pramana-api">GitHub</a> — source code and issues</li>
+    </ul>
+
+    <footer>
+      <a href="./">Pramana Docs</a> · <a href="https://github.com/syd-ppt/pramana-api">Source</a>
+    </footer>
+  </div>
+</body>
+</html>

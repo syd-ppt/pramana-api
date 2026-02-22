@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>API Reference — Pramana</title>
+  <meta name="description" content="Pramana API endpoint reference — submission, chart data, user stats, admin compaction."/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav>
+    <a href="./" class="brand">Pramana</a>
+    <a href="getting-started.html">Getting Started</a>
+    <a href="api.html" aria-current="page">API</a>
+    <a href="methodology.html">Methodology</a>
+    <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
+    <a href="https://pramana.pages.dev">Dashboard</a>
+  </nav>
+
+  <div class="container">
+    <h1>API Reference</h1>
+    <p class="subtitle">Base URL: <code>https://pramana.pages.dev/api</code></p>
+
+    <div class="callout">
+      All endpoints return JSON. Authentication uses JWT bearer tokens obtained via OAuth.
+      Endpoints marked <span class="badge">auth</span> require a valid token.
+      Endpoints marked <span class="badge">soft</span> accept anonymous submissions (user defaults to <code>anonymous</code>).
+    </div>
+
+    <!-- POST /api/submit -->
+    <h2>Submit Result</h2>
+    <div class="endpoint">
+      <span class="method method-post">POST</span> /api/submit <span class="badge">soft</span>
+    </div>
+    <p>Submit a single eval result.</p>
+
+    <h3>Request body</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>model_id</code></td><td>string</td><td>yes</td><td>Model identifier, max 256 chars</td></tr>
+        <tr><td><code>prompt_id</code></td><td>string</td><td>yes</td><td>Prompt/eval identifier, max 256 chars</td></tr>
+        <tr><td><code>output</code></td><td>string</td><td>yes</td><td>Model output, max 1MB</td></tr>
+        <tr><td><code>score</code></td><td>number</td><td>no</td><td>Score in [0, 1]. Omit if unscored.</td></tr>
+        <tr><td><code>metadata</code></td><td>object</td><td>no</td><td>Arbitrary key-value pairs</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Example</h3>
+    <pre><code>curl -X POST https://pramana.pages.dev/api/submit \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "model_id": "gpt-4o",
+    "prompt_id": "factuality-q42",
+    "output": "The capital of France is Paris.",
+    "score": 1.0,
+    "metadata": {"suite": "factuality", "version": "1.2"}
+  }'</code></pre>
+
+    <h3>Response</h3>
+    <pre><code>{
+  "id": "uuid-v4",
+  "status": "accepted",
+  "timestamp": "2026-02-22T12:00:00Z"
+}</code></pre>
+
+    <!-- POST /api/submit/batch -->
+    <h2>Batch Submit</h2>
+    <div class="endpoint">
+      <span class="method method-post">POST</span> /api/submit/batch <span class="badge">soft</span>
+    </div>
+    <p>Submit a batch of eval results (up to 1000).</p>
+
+    <h3>Request body</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>suite_version</code></td><td>string</td><td>yes</td><td>Version of the eval suite</td></tr>
+        <tr><td><code>suite_hash</code></td><td>string</td><td>yes</td><td>Content hash of the suite</td></tr>
+        <tr><td><code>model_id</code></td><td>string</td><td>yes</td><td>Model identifier</td></tr>
+        <tr><td><code>temperature</code></td><td>number</td><td>yes</td><td>Temperature used for generation</td></tr>
+        <tr><td><code>seed</code></td><td>number|null</td><td>no</td><td>Random seed if deterministic</td></tr>
+        <tr><td><code>timestamp</code></td><td>string</td><td>yes</td><td>ISO 8601 timestamp</td></tr>
+        <tr><td><code>results</code></td><td>array</td><td>yes</td><td>Array of submission objects (max 1000)</td></tr>
+      </tbody>
+    </table>
+
+    <!-- GET /api/data/chart -->
+    <h2>Chart Data</h2>
+    <div class="endpoint">
+      <span class="method method-get">GET</span> /api/data/chart
+    </div>
+    <p>Returns pre-aggregated chart data. Single R2 GET, cached.</p>
+
+    <h3>Response shape (<code>ChartJson</code>)</h3>
+    <pre><code>{
+  "version": 2,
+  "data": {
+    "2026-02-20": {
+      "gpt-4o": { "n": 150, "mean": 0.847, "m2": 3.21, "count": 160 },
+      "claude-3.5-sonnet": { "n": 88, "mean": 0.912, "m2": 1.05, "count": 88 }
+    }
+  },
+  "models": ["gpt-4o", "claude-3.5-sonnet"],
+  "total_submissions": 12840,
+  "total_scored": 11200,
+  "total_contributors": 47
+}</code></pre>
+
+    <div class="callout">
+      <strong>ModelDayStats:</strong> <code>n</code> = scored submissions, <code>mean</code> = running mean (Welford),
+      <code>m2</code> = sum of squared deviations (Welford), <code>count</code> = total including unscored.
+      Variance = m2 / (n &minus; 1).
+    </div>
+
+    <!-- GET /api/user/me/summary -->
+    <h2>User Summary</h2>
+    <div class="endpoint">
+      <span class="method method-get">GET</span> /api/user/me/summary <span class="badge">auth</span>
+    </div>
+    <p>Returns the authenticated user's submission summary.</p>
+
+    <h3>Response shape (<code>UserSummaryJson</code>)</h3>
+    <pre><code>{
+  "version": 2,
+  "date_stats": {
+    "2026-02-20": {
+      "gpt-4o": { "n": 10, "mean": 0.85, "m2": 0.42, "count": 10 }
+    }
+  },
+  "model_stats": {
+    "gpt-4o": { "n": 340, "mean": 0.82, "m2": 18.7, "count": 350 }
+  },
+  "total_submissions": 1240,
+  "total_scored": 1100
+}</code></pre>
+
+    <!-- GET /api/user/me/stats -->
+    <h2>User Stats</h2>
+    <div class="endpoint">
+      <span class="method method-get">GET</span> /api/user/me/stats <span class="badge">auth</span>
+    </div>
+    <p>Returns computed statistics for the authenticated user (derived from summary).</p>
+
+    <!-- DELETE /api/user/me -->
+    <h2>Delete User Data</h2>
+    <div class="endpoint">
+      <span class="method method-delete">DELETE</span> /api/user/me <span class="badge">auth</span>
+    </div>
+    <p>
+      GDPR data deletion. Removes the user's summary JSON from R2. Individual submissions in
+      archived CSVs are not modified (they are anonymized via hashed user IDs).
+    </p>
+
+    <!-- POST /api/admin/compact -->
+    <h2>Compact (Admin/Cron)</h2>
+    <div class="endpoint">
+      <span class="method method-post">POST</span> /api/admin/compact <span class="badge">auth</span>
+    </div>
+    <p>
+      Triggered daily by GitHub Actions cron. Requires <code>Authorization: Bearer $CRON_SECRET</code>.
+    </p>
+    <ol>
+      <li>Archive current buffer.csv.gz → _archive/YYYY-MM-DD.csv.gz</li>
+      <li>Rebuild _aggregated/chart_data.json from all archives + historical parquet</li>
+      <li>Reset buffer</li>
+    </ol>
+
+    <!-- Health -->
+    <h2>Health Check</h2>
+    <div class="endpoint">
+      <span class="method method-get">GET</span> /api/health
+    </div>
+    <pre><code>{ "status": "ok" }</code></pre>
+
+    <!-- Auth -->
+    <h2>Authentication</h2>
+    <p>OAuth flow endpoints. Used by the dashboard SPA, not by CLI directly.</p>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/auth/providers</code></td><td>List available OAuth providers</td></tr>
+        <tr><td><code>GET /api/auth/signin/:provider</code></td><td>Redirect to OAuth provider</td></tr>
+        <tr><td><code>GET /api/auth/callback/:provider</code></td><td>OAuth callback, sets JWT cookie</td></tr>
+        <tr><td><code>GET /api/auth/session</code></td><td>Returns current session info</td></tr>
+        <tr><td><code>POST /api/auth/signout</code></td><td>Clears JWT cookie</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Storage Schema</h2>
+    <p>CSV records stored in buffer and archive files contain these fields:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>string</td><td>UUID v4</td></tr>
+        <tr><td><code>timestamp</code></td><td>string</td><td>ISO 8601</td></tr>
+        <tr><td><code>user_id</code></td><td>string</td><td>SHA-256 derived from OAuth identity</td></tr>
+        <tr><td><code>model_id</code></td><td>string</td><td>Model identifier</td></tr>
+        <tr><td><code>prompt_id</code></td><td>string</td><td>Prompt/eval identifier</td></tr>
+        <tr><td><code>output</code></td><td>string</td><td>Model output text</td></tr>
+        <tr><td><code>output_hash</code></td><td>string</td><td>SHA-256 of output</td></tr>
+        <tr><td><code>metadata_json</code></td><td>string</td><td>JSON-encoded metadata</td></tr>
+        <tr><td><code>year</code></td><td>number</td><td>Partition year</td></tr>
+        <tr><td><code>month</code></td><td>number</td><td>Partition month</td></tr>
+        <tr><td><code>day</code></td><td>number</td><td>Partition day</td></tr>
+        <tr><td><code>score</code></td><td>number|null</td><td>Score in [0, 1]</td></tr>
+      </tbody>
+    </table>
+
+    <footer>
+      <a href="./">Pramana Docs</a> · <a href="https://github.com/syd-ppt/pramana-api">Source</a>
+    </footer>
+  </div>
+</body>
+</html>

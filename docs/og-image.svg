@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <style>
+      .title { font: 700 32px system-ui, sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 18px system-ui, sans-serif; fill: #64748b; }
+      .axis-label { font: 400 12px system-ui, sans-serif; fill: #94a3b8; }
+      .axis-title { font: 500 13px system-ui, sans-serif; fill: #64748b; }
+      .watermark { font: 400 13px system-ui, sans-serif; fill: #cbd5e1; }
+      .legend-text { font: 500 12px system-ui, sans-serif; }
+      .grid { stroke: #e2e8f0; stroke-dasharray: 4 4; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="#f8fafc"/>
+
+  <!-- Chart area background -->
+  <rect x="120" y="100" width="1040" height="400" fill="#ffffff" rx="4"/>
+  <rect x="120" y="100" width="1040" height="400" fill="none" stroke="#e2e8f0" stroke-width="1" rx="4"/>
+
+  <!-- Title -->
+  <text x="60" y="52" class="title">Pramana</text>
+  <text x="60" y="78" class="subtitle">LLM drift detection — model performance over time</text>
+
+  <!-- Y-axis labels -->
+  <text x="108" y="105" class="axis-label" text-anchor="end">1.0</text>
+  <text x="108" y="185" class="axis-label" text-anchor="end">0.8</text>
+  <text x="108" y="265" class="axis-label" text-anchor="end">0.6</text>
+  <text x="108" y="345" class="axis-label" text-anchor="end">0.4</text>
+  <text x="108" y="425" class="axis-label" text-anchor="end">0.2</text>
+  <text x="108" y="505" class="axis-label" text-anchor="end">0.0</text>
+
+  <!-- Y-axis title -->
+  <text x="30" y="300" class="axis-title" text-anchor="middle" transform="rotate(-90 30 300)">Mean Score</text>
+
+  <!-- Horizontal grid lines -->
+  <line x1="120" y1="100" x2="1160" y2="100" class="grid"/>
+  <line x1="120" y1="180" x2="1160" y2="180" class="grid"/>
+  <line x1="120" y1="260" x2="1160" y2="260" class="grid"/>
+  <line x1="120" y1="340" x2="1160" y2="340" class="grid"/>
+  <line x1="120" y1="420" x2="1160" y2="420" class="grid"/>
+  <line x1="120" y1="500" x2="1160" y2="500" class="grid"/>
+
+  <!-- Vertical grid lines (14 days) -->
+  <line x1="194" y1="100" x2="194" y2="500" class="grid"/>
+  <line x1="268" y1="100" x2="268" y2="500" class="grid"/>
+  <line x1="343" y1="100" x2="343" y2="500" class="grid"/>
+  <line x1="417" y1="100" x2="417" y2="500" class="grid"/>
+  <line x1="491" y1="100" x2="491" y2="500" class="grid"/>
+  <line x1="566" y1="100" x2="566" y2="500" class="grid"/>
+  <line x1="640" y1="100" x2="640" y2="500" class="grid"/>
+  <line x1="714" y1="100" x2="714" y2="500" class="grid"/>
+  <line x1="789" y1="100" x2="789" y2="500" class="grid"/>
+  <line x1="863" y1="100" x2="863" y2="500" class="grid"/>
+  <line x1="937" y1="100" x2="937" y2="500" class="grid"/>
+  <line x1="1011" y1="100" x2="1011" y2="500" class="grid"/>
+  <line x1="1086" y1="100" x2="1086" y2="500" class="grid"/>
+
+  <!-- X-axis date labels -->
+  <text x="120" y="525" class="axis-label" text-anchor="middle">Feb 1</text>
+  <text x="268" y="525" class="axis-label" text-anchor="middle">Feb 3</text>
+  <text x="417" y="525" class="axis-label" text-anchor="middle">Feb 5</text>
+  <text x="566" y="525" class="axis-label" text-anchor="middle">Feb 7</text>
+  <text x="714" y="525" class="axis-label" text-anchor="middle">Feb 9</text>
+  <text x="863" y="525" class="axis-label" text-anchor="middle">Feb 11</text>
+  <text x="1011" y="525" class="axis-label" text-anchor="middle">Feb 13</text>
+  <text x="1160" y="525" class="axis-label" text-anchor="middle">Feb 15</text>
+
+  <!-- Line 1: GPT-4o — degrading (blue #2563eb) -->
+  <!-- Starts ~0.92, degrades to ~0.61 -->
+  <polyline fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+    points="120,132 194,136 268,148 343,164 417,172 491,196 566,220 640,252 714,268 789,284 863,300 937,316 1011,340 1086,348 1160,356"/>
+
+  <!-- Line 2: Claude-3.5 — stable (red #dc2626) -->
+  <!-- Hovers around 0.85 -->
+  <polyline fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+    points="120,160 194,156 268,164 343,152 417,160 491,148 566,156 640,164 714,152 789,160 863,156 937,148 1011,160 1086,156 1160,152"/>
+
+  <!-- Line 3: Gemini — improving (green #059669) -->
+  <!-- Starts ~0.55, improves to ~0.82 -->
+  <polyline fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+    points="120,320 194,308 268,296 343,280 417,268 491,252 566,236 640,220 714,208 789,196 863,188 937,180 1011,172 1086,168 1160,164"/>
+
+  <!-- Line 4: Llama-3 — sudden drop (amber #d97706) -->
+  <!-- Stable ~0.78 then drops to ~0.35 at day 9, partial recovery -->
+  <polyline fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+    points="120,188 194,192 268,184 343,192 417,188 491,196 566,192 640,340 714,360 789,340 863,320 937,304 1011,292 1086,284 1160,276"/>
+
+  <!-- Line 5: Mixtral — gradual climb (purple #7c3aed) -->
+  <!-- Starts ~0.42, climbs to ~0.72 -->
+  <polyline fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+    points="120,368 194,356 268,344 343,332 417,320 491,308 566,296 640,284 714,272 789,260 863,252 937,244 1011,236 1086,228 1160,220"/>
+
+  <!-- Data points — Line 1 (blue) -->
+  <g fill="#2563eb">
+    <circle cx="120" cy="132" r="3.5"/><circle cx="268" cy="148" r="3.5"/><circle cx="417" cy="172" r="3.5"/>
+    <circle cx="566" cy="220" r="3.5"/><circle cx="714" cy="268" r="3.5"/><circle cx="863" cy="300" r="3.5"/>
+    <circle cx="1011" cy="340" r="3.5"/><circle cx="1160" cy="356" r="3.5"/>
+  </g>
+
+  <!-- Data points — Line 2 (red) -->
+  <g fill="#dc2626">
+    <circle cx="120" cy="160" r="3.5"/><circle cx="268" cy="164" r="3.5"/><circle cx="417" cy="160" r="3.5"/>
+    <circle cx="566" cy="156" r="3.5"/><circle cx="714" cy="152" r="3.5"/><circle cx="863" cy="156" r="3.5"/>
+    <circle cx="1011" cy="160" r="3.5"/><circle cx="1160" cy="152" r="3.5"/>
+  </g>
+
+  <!-- Data points — Line 3 (green) -->
+  <g fill="#059669">
+    <circle cx="120" cy="320" r="3.5"/><circle cx="268" cy="296" r="3.5"/><circle cx="417" cy="268" r="3.5"/>
+    <circle cx="566" cy="236" r="3.5"/><circle cx="714" cy="208" r="3.5"/><circle cx="863" cy="188" r="3.5"/>
+    <circle cx="1011" cy="172" r="3.5"/><circle cx="1160" cy="164" r="3.5"/>
+  </g>
+
+  <!-- Data points — Line 4 (amber) -->
+  <g fill="#d97706">
+    <circle cx="120" cy="188" r="3.5"/><circle cx="268" cy="184" r="3.5"/><circle cx="417" cy="188" r="3.5"/>
+    <circle cx="566" cy="192" r="3.5"/><circle cx="714" cy="360" r="3.5"/><circle cx="863" cy="320" r="3.5"/>
+    <circle cx="1011" cy="292" r="3.5"/><circle cx="1160" cy="276" r="3.5"/>
+  </g>
+
+  <!-- Data points — Line 5 (purple) -->
+  <g fill="#7c3aed">
+    <circle cx="120" cy="368" r="3.5"/><circle cx="268" cy="344" r="3.5"/><circle cx="417" cy="320" r="3.5"/>
+    <circle cx="566" cy="296" r="3.5"/><circle cx="714" cy="272" r="3.5"/><circle cx="863" cy="252" r="3.5"/>
+    <circle cx="1011" cy="236" r="3.5"/><circle cx="1160" cy="220" r="3.5"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(120, 556)">
+    <line x1="0" y1="0" x2="20" y2="0" stroke="#2563eb" stroke-width="2.5"/>
+    <circle cx="10" cy="0" r="3" fill="#2563eb"/>
+    <text x="28" y="4" class="legend-text" fill="#2563eb">gpt-4o</text>
+
+    <line x1="150" y1="0" x2="170" y2="0" stroke="#dc2626" stroke-width="2.5"/>
+    <circle cx="160" cy="0" r="3" fill="#dc2626"/>
+    <text x="178" y="4" class="legend-text" fill="#dc2626">claude-3.5-sonnet</text>
+
+    <line x1="380" y1="0" x2="400" y2="0" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="390" cy="0" r="3" fill="#059669"/>
+    <text x="408" y="4" class="legend-text" fill="#059669">gemini-2.0-flash</text>
+
+    <line x1="590" y1="0" x2="610" y2="0" stroke="#d97706" stroke-width="2.5"/>
+    <circle cx="600" cy="0" r="3" fill="#d97706"/>
+    <text x="618" y="4" class="legend-text" fill="#d97706">llama-3-70b</text>
+
+    <line x1="770" y1="0" x2="790" y2="0" stroke="#7c3aed" stroke-width="2.5"/>
+    <circle cx="780" cy="0" r="3" fill="#7c3aed"/>
+    <text x="798" y="4" class="legend-text" fill="#7c3aed">mixtral-8x22b</text>
+  </g>
+
+  <!-- Watermark -->
+  <text x="1220" y="600" class="watermark" text-anchor="end">pramana.pages.dev</text>
+
+  <!-- Axis lines -->
+  <line x1="120" y1="500" x2="1160" y2="500" stroke="#94a3b8" stroke-width="1"/>
+  <line x1="120" y1="100" x2="120" y2="500" stroke="#94a3b8" stroke-width="1"/>
+</svg>

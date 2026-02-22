@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Methodology — Pramana</title>
+  <meta name="description" content="Statistical methodology behind Pramana's drift detection: Welch's t-test, Cohen's d, Holm-Bonferroni, Wilson CI, Welford's algorithm."/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav>
+    <a href="./" class="brand">Pramana</a>
+    <a href="getting-started.html">Getting Started</a>
+    <a href="api.html">API</a>
+    <a href="methodology.html" aria-current="page">Methodology</a>
+    <a href="https://github.com/syd-ppt/pramana-api">GitHub</a>
+    <a href="https://pramana.pages.dev">Dashboard</a>
+  </nav>
+
+  <div class="container">
+    <h1>Statistical Methodology</h1>
+    <p class="subtitle">How Pramana detects drift and quantifies its significance</p>
+
+    <h2>Welch's t-test</h2>
+    <p>
+      We use Welch's t-test (not Student's) because model performance samples have unequal variances
+      across time periods. Student's t-test assumes homoscedasticity — equal variance in both groups.
+      When this assumption is violated (it always is with LLM evals), Student's t-test produces inflated
+      false-positive rates. Welch's approximation adjusts degrees of freedom to compensate.
+    </p>
+
+    <h3>Test statistic</h3>
+    <div class="formula">
+      t = (x&#772;<sub>1</sub> &minus; x&#772;<sub>2</sub>) / &radic;(s<sub>1</sub>&sup2;/n<sub>1</sub> + s<sub>2</sub>&sup2;/n<sub>2</sub>)
+    </div>
+
+    <h3>Welch-Satterthwaite degrees of freedom</h3>
+    <div class="formula">
+      &nu; = (s<sub>1</sub>&sup2;/n<sub>1</sub> + s<sub>2</sub>&sup2;/n<sub>2</sub>)&sup2; / [(s<sub>1</sub>&sup2;/n<sub>1</sub>)&sup2;/(n<sub>1</sub>&minus;1) + (s<sub>2</sub>&sup2;/n<sub>2</sub>)&sup2;/(n<sub>2</sub>&minus;1)]
+    </div>
+
+    <p>
+      The p-value is computed from the t-distribution CDF using the regularized incomplete beta function
+      (Lentz's continued fraction). See <code>src/lib/statistics.ts:102</code>.
+    </p>
+
+    <h2>Cohen's d Effect Size</h2>
+    <p>
+      Statistical significance alone is insufficient. A large sample can make trivial differences
+      "significant." Cohen's d measures practical magnitude independent of sample size.
+    </p>
+
+    <div class="formula">
+      d = |x&#772;<sub>1</sub> &minus; x&#772;<sub>2</sub>| / s<sub>p</sub>
+      <br/>
+      s<sub>p</sub> = &radic;[((n<sub>1</sub>&minus;1)s<sub>1</sub>&sup2; + (n<sub>2</sub>&minus;1)s<sub>2</sub>&sup2;) / (n<sub>1</sub> + n<sub>2</sub> &minus; 2)]
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>|d|</th><th>Interpretation</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>&lt; 0.2</td><td>Negligible</td><td>No action needed</td></tr>
+        <tr><td>0.2 – 0.5</td><td>Small</td><td>Monitor — may be noise</td></tr>
+        <tr><td>0.5 – 0.8</td><td>Medium</td><td>Investigate — likely real drift</td></tr>
+        <tr><td>&gt; 0.8</td><td>Large</td><td>Act — significant behavioral change</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Pramana reports both p-value and d. A result is flagged as degraded only when p &lt; &alpha;
+      <em>and</em> the recent mean is lower than baseline. See <code>src/lib/statistics.ts:161</code>.
+    </p>
+
+    <h2>Holm-Bonferroni Correction</h2>
+    <p>
+      Testing multiple models simultaneously inflates the family-wise error rate. Testing k=10 models
+      at &alpha;=0.05 gives a ~40% chance of at least one false alarm (1 &minus; 0.95<sup>10</sup>).
+    </p>
+    <p>
+      Holm-Bonferroni is a stepwise procedure that controls FWER while being uniformly more powerful
+      than classic Bonferroni. It rejects more true positives.
+    </p>
+
+    <h3>Algorithm</h3>
+    <ol>
+      <li>Sort m p-values in ascending order: p<sub>(1)</sub> &le; p<sub>(2)</sub> &le; &hellip; &le; p<sub>(m)</sub></li>
+      <li>For each i from 1 to m, compute adjusted p: p&#770;<sub>(i)</sub> = max(p&#770;<sub>(i&minus;1)</sub>, p<sub>(i)</sub> &times; (m &minus; i + 1))</li>
+      <li>Reject H<sub>0</sub> for all i where p&#770;<sub>(i)</sub> &lt; &alpha;</li>
+    </ol>
+
+    <div class="formula">
+      p&#770;<sub>(i)</sub> = min(1, max<sub>j&le;i</sub> { p<sub>(j)</sub> &middot; (m &minus; j + 1) })
+    </div>
+
+    <p>Implementation: <code>src/lib/statistics.ts:239</code></p>
+
+    <h2>Wilson Confidence Intervals</h2>
+    <p>
+      For binary pass/fail scores, Wald intervals (p&#770; &plusmn; z&radic;(p&#770;q&#770;/n)) have poor coverage
+      at extreme proportions and small n. Wilson intervals maintain correct coverage across the full range.
+    </p>
+
+    <div class="formula">
+      CI = (p&#770; + z&sup2;/2n &plusmn; z&radic;(p&#770;q&#770;/n + z&sup2;/4n&sup2;)) / (1 + z&sup2;/n)
+    </div>
+
+    <p>
+      Where z = 1.96 for 95% confidence. Wilson intervals are displayed in the dashboard chart tooltips
+      as the shaded CI bands around each model's mean score line.
+    </p>
+
+    <h2>Welford's Online Algorithm</h2>
+    <p>
+      All per-model, per-day statistics are computed incrementally using Welford's algorithm.
+      This stores only three values per group — (n, mean, M2) — instead of retaining all raw scores.
+    </p>
+
+    <h3>Update step (single observation x)</h3>
+    <div class="formula">
+      n &larr; n + 1<br/>
+      &delta; = x &minus; mean<br/>
+      mean &larr; mean + &delta;/n<br/>
+      &delta;<sub>2</sub> = x &minus; mean<br/>
+      M<sub>2</sub> &larr; M<sub>2</sub> + &delta; &middot; &delta;<sub>2</sub>
+    </div>
+
+    <h3>Parallel merge (combining two groups a, b)</h3>
+    <div class="formula">
+      n = n<sub>a</sub> + n<sub>b</sub><br/>
+      &delta; = mean<sub>b</sub> &minus; mean<sub>a</sub><br/>
+      mean = (n<sub>a</sub> &middot; mean<sub>a</sub> + n<sub>b</sub> &middot; mean<sub>b</sub>) / n<br/>
+      M<sub>2</sub> = M<sub>2,a</sub> + M<sub>2,b</sub> + &delta;&sup2; &middot; n<sub>a</sub> &middot; n<sub>b</sub> / n
+    </div>
+
+    <div class="callout">
+      <strong>Privacy property:</strong> Individual submissions cannot be reconstructed from
+      (n, mean, M2) aggregates. Only summary statistics are stored and transmitted.
+    </div>
+
+    <p>
+      Variance is recovered as s&sup2; = M<sub>2</sub> / (n &minus; 1) (Bessel's correction).
+      Implementation: <code>src/lib/statistics.ts:211</code> (<code>poolStats</code>).
+    </p>
+
+    <h2>Detection Pipeline</h2>
+    <p>
+      The full detection pipeline runs client-side (in the dashboard) on the pre-aggregated chart data:
+    </p>
+    <ol>
+      <li>Split each model's time series into baseline (older window) and recent (newer window)</li>
+      <li>Compute Welch's t-test from summary statistics (no raw data needed)</li>
+      <li>Compute Cohen's d from pooled standard deviation</li>
+      <li>Apply Holm-Bonferroni across all models tested</li>
+      <li>Flag model as degraded if adjusted p &lt; 0.05 <em>and</em> recent mean &lt; baseline mean</li>
+    </ol>
+
+    <footer>
+      <a href="./">Pramana Docs</a> · <a href="https://github.com/syd-ppt/pramana-api">Source</a>
+    </footer>
+  </div>
+</body>
+</html>
