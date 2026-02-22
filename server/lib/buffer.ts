@@ -468,13 +468,10 @@ export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }>
 }
 
 /**
- * Rebuild chart_data.json from all archive CSVs.
- * Tracks hash-based output consistency:
- *   - prevHash: last-seen output_hash per (model_id, prompt_id)
- *   - A prompt "drifted" if its hash differs from the previous day's hash
+ * Load all records from archives + current buffer.
+ * Shared by rebuildChartJson and rebuildUserSummaries.
  */
-export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
-  // 1. Load all records: archives + current buffer
+async function loadAllRecords(bucket: R2Bucket): Promise<StorageRecord[]> {
   const allRecords: StorageRecord[] = []
   const archiveKeys = await listFiles(bucket, ARCHIVE_PREFIX)
   for (const key of archiveKeys) {
@@ -484,12 +481,23 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     allRecords.push(...parseCsvBody(csv))
   }
 
-  // Also read the current buffer (unarchived submissions)
   const { body: bufferBody } = await downloadFileWithEtag(bucket, BUFFER_KEY)
   if (bufferBody) {
     const bufferCsv = decoder.decode(await gunzip(bufferBody))
     allRecords.push(...parseCsvBody(bufferCsv))
   }
+
+  return allRecords
+}
+
+/**
+ * Rebuild chart_data.json from all archive CSVs.
+ * Tracks hash-based output consistency:
+ *   - prevHash: last-seen output_hash per (model_id, prompt_id)
+ *   - A prompt "drifted" if its hash differs from the previous day's hash
+ */
+export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
+  const allRecords = await loadAllRecords(bucket)
 
   // 2. Sort by date
   allRecords.sort((a, b) => {
@@ -574,6 +582,46 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
   }
 
   await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
+}
+
+/**
+ * Rebuild all user summaries from archives + buffer.
+ * Fixes summaries corrupted by the silent uploadFileConditional bug.
+ */
+export async function rebuildUserSummaries(bucket: R2Bucket): Promise<number> {
+  const allRecords = await loadAllRecords(bucket)
+
+  // Group by user_id
+  const byUser = new Map<string, StorageRecord[]>()
+  for (const r of allRecords) {
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, [])
+    byUser.get(r.user_id)!.push(r)
+  }
+
+  // Build and write each user summary
+  for (const [userId, records] of byUser) {
+    const summary: UserSummaryJson = {
+      version: 3,
+      submissions_by_date: {},
+      model_submissions: {},
+      total_submissions: 0,
+    }
+
+    for (const r of records) {
+      const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
+      if (!summary.submissions_by_date[dateStr]) summary.submissions_by_date[dateStr] = {}
+      summary.submissions_by_date[dateStr][r.model_id] =
+        (summary.submissions_by_date[dateStr][r.model_id] || 0) + 1
+      summary.model_submissions[r.model_id] =
+        (summary.model_submissions[r.model_id] || 0) + 1
+      summary.total_submissions++
+    }
+
+    const key = `${USERS_PREFIX}${userId}/summary.json`
+    await uploadFile(bucket, key, encoder.encode(JSON.stringify(summary)))
+  }
+
+  return byUser.size
 }
 
 // -- Compact (cron) --

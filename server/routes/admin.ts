@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { compactBuffer, rebuildChartJson } from '../lib/buffer'
+import { compactBuffer, rebuildChartJson, rebuildUserSummaries } from '../lib/buffer'
 
 type Env = { Bindings: { PRAMANA_DATA: R2Bucket; CRON_SECRET: string } }
 
@@ -23,6 +23,8 @@ export const adminRoutes = new Hono<Env>()
     const denied = requireCronAuth(c)
     if (denied) return denied
 
-    await rebuildChartJson(c.env.PRAMANA_DATA)
-    return c.json({ status: 'completed', rebuilt: true })
+    const bucket = c.env.PRAMANA_DATA
+    await rebuildChartJson(bucket)
+    const usersRebuilt = await rebuildUserSummaries(bucket)
+    return c.json({ status: 'completed', rebuilt: true, usersRebuilt })
   })
