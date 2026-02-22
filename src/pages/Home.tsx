@@ -19,9 +19,9 @@ function consistencyBadgeClass(v: number): string {
 }
 
 function driftColor(n: number): string {
-  if (n === 0) return 'text-[#6ee7b7]';
-  if (n <= 3) return 'text-[#fcd34d]';
-  return 'text-[#fda4af]';
+  if (n === 0) return 'text-[var(--status-good-text)]';
+  if (n <= 3) return 'text-[var(--status-warn-text)]';
+  return 'text-[var(--status-bad-text)]';
 }
 
 export default function Home() {
@@ -139,8 +139,7 @@ export default function Home() {
             {overallConsistency !== null && (
               <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-mono font-semibold ${consistencyBadgeClass(overallConsistency)}`}>
                 <span className="w-1.5 h-1.5 rounded-full pulse-glow" style={{
-                  backgroundColor: overallConsistency >= 0.95 ? '#10b981' : overallConsistency >= 0.80 ? '#f59e0b' : '#f43f5e',
-                  boxShadow: `0 0 8px ${overallConsistency >= 0.95 ? 'rgba(16,185,129,0.6)' : overallConsistency >= 0.80 ? 'rgba(245,158,11,0.6)' : 'rgba(244,63,94,0.6)'}`,
+                  backgroundColor: overallConsistency >= 0.95 ? 'var(--status-good)' : overallConsistency >= 0.80 ? 'var(--status-warn)' : 'var(--status-bad)',
                 }} />
                 {(overallConsistency * 100).toFixed(1)}% overall
               </div>

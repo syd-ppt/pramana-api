@@ -6,9 +6,9 @@ import Button from '@/components/Button';
 import type { UserStatsResponse, ChartApiResponse, ChartDataPoint } from '@/lib/types';
 
 function consistencyColor(v: number): string {
-  if (v >= 0.95) return '#6ee7b7';
-  if (v >= 0.80) return '#fcd34d';
-  return '#fda4af';
+  if (v >= 0.95) return 'var(--status-good-text)';
+  if (v >= 0.80) return 'var(--status-warn-text)';
+  return 'var(--status-bad-text)';
 }
 
 function consistencyBadgeClass(v: number): string {
@@ -190,7 +190,7 @@ export default function MyStats() {
                           <p className="text-xs text-[var(--text-muted)] mt-1 font-mono">
                             {subs} submissions
                             <span className="mx-1.5 text-[var(--border-glass)]">&middot;</span>
-                            <span style={{ color: drifted === 0 ? '#6ee7b7' : drifted <= 3 ? '#fcd34d' : '#fda4af' }}>
+                            <span style={{ color: drifted === 0 ? 'var(--status-good-text)' : drifted <= 3 ? 'var(--status-warn-text)' : 'var(--status-bad-text)' }}>
                               {drifted} drift events
                             </span>
                           </p>

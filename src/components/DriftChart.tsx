@@ -11,6 +11,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts';
+import { useTheme } from '@/lib/theme';
 
 export type ChartView = 'consistency' | 'dual' | 'drift-events';
 
@@ -24,8 +25,6 @@ interface DriftChartProps {
   title?: string;
 }
 
-// Luminous neon palette
-const COLORS = ['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#22d3ee'];
 const GLOW_COLORS = [
   'rgba(129, 140, 248, 0.6)',
   'rgba(244, 114, 182, 0.6)',
@@ -40,11 +39,11 @@ const dateFormatter = (d: string) => {
   return `${parts[1]}/${parts[2]}`;
 };
 
-/** SVG filter definitions for line glow */
-function GlowFilters() {
+/** SVG filter definitions for line glow (future theme only) */
+function GlowFilters({ colors }: { colors: string[] }) {
   return (
     <defs>
-      {COLORS.map((_, i) => (
+      {colors.map((_, i) => (
         <filter key={i} id={`glow-${i}`} x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feComposite in="SourceGraphic" in2="blur" operator="over" />
@@ -142,22 +141,22 @@ function DriftEventsTooltip({ active, payload, label }: {
 
 // --- Chart sub-components ---
 
-function ConsistencyChart({ data, models }: { data: DriftChartProps['data']; models: string[] }) {
+function ConsistencyChart({ data, models, colors, showGlow }: { data: DriftChartProps['data']; models: string[]; colors: string[]; showGlow: boolean }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data}>
-        <GlowFilters />
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        {showGlow && <GlowFilters colors={colors} />}
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-stroke)" />
         <XAxis
           dataKey="date"
           tickFormatter={dateFormatter}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <YAxis
           domain={[0.6, 1.0]}
           tickFormatter={pctFormatter}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <ReferenceLine
@@ -179,17 +178,17 @@ function ConsistencyChart({ data, models }: { data: DriftChartProps['data']; mod
             type="monotone"
             name={model}
             dataKey={`${model}_consistency`}
-            stroke={COLORS[idx % COLORS.length]}
+            stroke={colors[idx % colors.length]}
             strokeWidth={2.5}
             dot={false}
             activeDot={{
               r: 5,
               strokeWidth: 2,
-              stroke: COLORS[idx % COLORS.length],
+              stroke: colors[idx % colors.length],
               fill: 'var(--bg-surface)',
-              style: { filter: `drop-shadow(0 0 6px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` },
+              ...(showGlow ? { style: { filter: `drop-shadow(0 0 6px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` } } : {}),
             }}
-            style={{ filter: `drop-shadow(0 0 4px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` }}
+            style={showGlow ? { filter: `drop-shadow(0 0 4px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` } : undefined}
           />
         ))}
       </LineChart>
@@ -197,19 +196,19 @@ function ConsistencyChart({ data, models }: { data: DriftChartProps['data']; mod
   );
 }
 
-function DriftEventsChart({ data, models }: { data: DriftChartProps['data']; models: string[] }) {
+function DriftEventsChart({ data, models, colors }: { data: DriftChartProps['data']; models: string[]; colors: string[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-stroke)" />
         <XAxis
           dataKey="date"
           tickFormatter={dateFormatter}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <YAxis
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <Tooltip content={<DriftEventsTooltip />} />
@@ -225,7 +224,7 @@ function DriftEventsChart({ data, models }: { data: DriftChartProps['data']; mod
             name={model}
             dataKey={`${model}_drifted`}
             stackId="drift"
-            fill={COLORS[idx % COLORS.length]}
+            fill={colors[idx % colors.length]}
             opacity={0.75}
             radius={idx === models.length - 1 ? [2, 2, 0, 0] : undefined}
           />
@@ -235,19 +234,19 @@ function DriftEventsChart({ data, models }: { data: DriftChartProps['data']; mod
   );
 }
 
-function ActivityBars({ data, models }: { data: DriftChartProps['data']; models: string[] }) {
+function ActivityBars({ data, models, colors }: { data: DriftChartProps['data']; models: string[]; colors: string[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-stroke)" />
         <XAxis
           dataKey="date"
           tickFormatter={dateFormatter}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <YAxis
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--axis-stroke)"
           tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
         />
         <Tooltip />
@@ -263,7 +262,7 @@ function ActivityBars({ data, models }: { data: DriftChartProps['data']; models:
             name={model}
             dataKey={model}
             stackId="subs"
-            fill={COLORS[idx % COLORS.length]}
+            fill={colors[idx % colors.length]}
             opacity={0.5}
             radius={idx === models.length - 1 ? [2, 2, 0, 0] : undefined}
           />
@@ -284,7 +283,9 @@ const VIEW_TITLES: Record<ChartView, string> = {
 // --- Main ---
 
 export default function DriftChart({ data, models, view = 'consistency', title }: DriftChartProps) {
+  const { theme, chartColors } = useTheme();
   const heading = title ?? VIEW_TITLES[view];
+  const showGlow = theme === 'future';
 
   return (
     <div className="chart-container glass-elevated rounded-2xl p-5 sm:p-6">
@@ -292,19 +293,19 @@ export default function DriftChart({ data, models, view = 'consistency', title }
 
       {view === 'consistency' && (
         <div className="w-full h-64 sm:h-80 lg:h-96">
-          <ConsistencyChart data={data} models={models} />
+          <ConsistencyChart data={data} models={models} colors={chartColors} showGlow={showGlow} />
         </div>
       )}
 
       {view === 'dual' && (
         <>
           <div className="w-full h-48 sm:h-64 lg:h-72">
-            <ConsistencyChart data={data} models={models} />
+            <ConsistencyChart data={data} models={models} colors={chartColors} showGlow={showGlow} />
           </div>
           <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
             <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Submissions</h3>
             <div className="w-full h-32 sm:h-40">
-              <ActivityBars data={data} models={models} />
+              <ActivityBars data={data} models={models} colors={chartColors} />
             </div>
           </div>
         </>
@@ -312,7 +313,7 @@ export default function DriftChart({ data, models, view = 'consistency', title }
 
       {view === 'drift-events' && (
         <div className="w-full h-64 sm:h-80 lg:h-96">
-          <DriftEventsChart data={data} models={models} />
+          <DriftEventsChart data={data} models={models} colors={chartColors} />
         </div>
       )}
     </div>
