@@ -5,6 +5,18 @@ import DriftChart from '@/components/DriftChart';
 import Button from '@/components/Button';
 import type { UserStatsResponse, ChartApiResponse, ChartDataPoint } from '@/lib/types';
 
+function consistencyColor(v: number): string {
+  if (v >= 0.95) return '#6ee7b7';
+  if (v >= 0.80) return '#fcd34d';
+  return '#fda4af';
+}
+
+function consistencyBadgeClass(v: number): string {
+  if (v >= 0.95) return 'badge-good';
+  if (v >= 0.80) return 'badge-warn';
+  return 'badge-bad';
+}
+
 export default function MyStats() {
   const { session, status } = useAuth();
   const navigate = useNavigate();
@@ -39,13 +51,11 @@ export default function MyStats() {
       .finally(() => setLoading(false));
   }, [status]);
 
-  // Filter chart to user's tested models
   const userModels = useMemo(() => {
     if (!stats) return [];
     return stats.models_tested.filter((m) => chartModels.includes(m));
   }, [stats, chartModels]);
 
-  // Latest consistency per model from chart data
   const latestConsistency = useMemo(() => {
     if (chartData.length === 0) return {} as Record<string, number>;
     const latest = chartData[chartData.length - 1];
@@ -56,7 +66,6 @@ export default function MyStats() {
     return result;
   }, [chartData, userModels]);
 
-  // Weighted avg consistency across user's models
   const avgConsistency = useMemo(() => {
     if (chartData.length === 0 || userModels.length === 0) return null;
     const latest = chartData[chartData.length - 1];
@@ -71,7 +80,6 @@ export default function MyStats() {
     return totalPrompts > 0 ? weightedSum / totalPrompts : null;
   }, [chartData, userModels]);
 
-  // Total drift events per model across all chart data
   const modelDriftTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const model of userModels) {
@@ -86,8 +94,9 @@ export default function MyStats() {
 
   if (status === 'loading' || (status === 'authenticated' && loading)) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-600 rounded-full"></div>
+      <div className="min-h-screen bg-mesh flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-2 border-[var(--border-glass)] border-t-[var(--accent-violet)] rounded-full"
+          style={{ boxShadow: 'var(--glow-violet)' }} />
       </div>
     );
   }
@@ -97,56 +106,55 @@ export default function MyStats() {
   const userId = session.user.id;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-mesh">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
         {/* Header */}
-        <div className="bg-white shadow-sm rounded-lg p-8 mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Your Statistics</h1>
-          <p className="text-sm text-slate-500 font-mono">{userId}</p>
+        <div className="glass-elevated rounded-2xl p-8 mb-8">
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight mb-2">Your Statistics</h1>
+          <p className="text-sm text-[var(--text-muted)] font-mono">{userId}</p>
         </div>
 
         {!stats ? (
-          <div className="bg-amber-50 border-l-4 border-amber-600 p-6 mb-8">
-            <h2 className="font-semibold text-amber-950 mb-2">Unable to load statistics</h2>
-            <p className="text-sm text-amber-950">
+          <div className="glass rounded-xl border-l-4 border-[var(--accent-amber)] p-6 mb-8">
+            <h2 className="font-semibold text-[var(--accent-amber)] mb-2 text-sm">Unable to load statistics</h2>
+            <p className="text-sm text-[var(--text-secondary)]">
               Stats service is unavailable. Your submissions are still being tracked.
             </p>
           </div>
         ) : (
           <>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-              <div className="bg-white shadow-sm rounded-lg p-6">
-                <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+              <div className="stat-card glass-elevated rounded-2xl p-6">
+                <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                   Models Tested
                 </h2>
-                <p className="text-3xl font-bold text-slate-900">{stats.models_count}</p>
-                <p className="text-sm text-slate-500 mt-1 truncate">
+                <p className="text-4xl font-bold text-[var(--text-primary)]">{stats.models_count}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2 truncate font-mono">
                   {stats.models_tested.length > 0 ? stats.models_tested.join(', ') : 'None yet'}
                 </p>
               </div>
 
-              <div className="bg-white shadow-sm rounded-lg p-6">
-                <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
+              <div className="stat-card glass-elevated rounded-2xl p-6">
+                <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                   Avg Consistency
                 </h2>
-                <p className={`text-3xl font-bold ${
-                  avgConsistency === null ? 'text-slate-400' :
-                  avgConsistency >= 0.95 ? 'text-green-700' :
-                  avgConsistency >= 0.80 ? 'text-yellow-700' :
-                  'text-red-700'
-                }`}>
+                <p className="text-4xl font-bold font-mono" style={{
+                  color: avgConsistency !== null ? consistencyColor(avgConsistency) : 'var(--text-muted)',
+                  textShadow: avgConsistency !== null ? `0 0 20px ${consistencyColor(avgConsistency)}40` : 'none',
+                }}>
                   {avgConsistency !== null ? `${(avgConsistency * 100).toFixed(1)}%` : '—'}
                 </p>
-                <p className="text-sm text-slate-500 mt-1">weighted across your models</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2">weighted across your models</p>
               </div>
 
-              <div className="bg-white shadow-sm rounded-lg p-6">
-                <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
+              <div className="stat-card glass-elevated rounded-2xl p-6">
+                <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
                   Total Submissions
                 </h2>
-                <p className="text-3xl font-bold text-slate-900">{stats.total_submissions}</p>
-                <p className="text-sm text-slate-500 mt-1">
+                <p className="text-4xl font-bold text-[var(--text-primary)]">{stats.total_submissions}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2 font-mono">
                   Last: {stats.last_submission ? new Date(stats.last_submission).toLocaleDateString() : 'Never'}
                 </p>
               </div>
@@ -173,24 +181,24 @@ export default function MyStats() {
                     const consistency = latestConsistency[model] ?? 1.0;
                     const subs = stats.model_submissions[model] ?? 0;
                     const drifted = modelDriftTotals[model] ?? 0;
+                    const color = consistencyColor(consistency);
 
                     return (
-                      <div key={model} className="bg-white border border-slate-200 rounded-lg p-4 flex justify-between items-center">
+                      <div key={model} className="glass glass-hover rounded-xl p-5 flex justify-between items-center transition-all">
                         <div>
-                          <h3 className="font-medium text-slate-900">{model}</h3>
-                          <p className="text-sm text-slate-500 mt-0.5">
+                          <h3 className="font-medium text-[var(--text-primary)] text-sm">{model}</h3>
+                          <p className="text-xs text-[var(--text-muted)] mt-1 font-mono">
                             {subs} submissions
-                            <span className="mx-1">&middot;</span>
-                            <span className={drifted === 0 ? 'text-green-700' : drifted <= 3 ? 'text-yellow-700' : 'text-red-700'}>
+                            <span className="mx-1.5 text-[var(--border-glass)]">&middot;</span>
+                            <span style={{ color: drifted === 0 ? '#6ee7b7' : drifted <= 3 ? '#fcd34d' : '#fda4af' }}>
                               {drifted} drift events
                             </span>
                           </p>
                         </div>
-                        <span className={`text-lg font-bold ${
-                          consistency >= 0.95 ? 'text-green-700' :
-                          consistency >= 0.80 ? 'text-yellow-700' :
-                          'text-red-700'
-                        }`}>
+                        <span
+                          className={`text-sm px-3 py-1 rounded-full font-mono font-semibold ${consistencyBadgeClass(consistency)}`}
+                          style={{ textShadow: `0 0 12px ${color}50` }}
+                        >
                           {(consistency * 100).toFixed(0)}%
                         </span>
                       </div>
@@ -200,10 +208,14 @@ export default function MyStats() {
             )}
 
             {stats.total_submissions === 0 && (
-              <div className="bg-blue-50 border-l-4 border-blue-600 p-6 mb-8">
-                <h2 className="font-semibold text-blue-950 mb-2">No submissions yet</h2>
-                <p className="text-sm text-blue-900">
-                  Run <code className="bg-slate-800 text-slate-100 px-1.5 py-0.5 rounded font-mono text-xs">uvx pramana run --tier cheap --model gpt-4</code> to start contributing.
+              <div className="glass rounded-xl border-l-4 border-[var(--accent-cyan)] p-6 mb-8">
+                <h2 className="font-semibold text-[var(--text-primary)] mb-2 text-sm">No submissions yet</h2>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Run{' '}
+                  <code className="bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-1.5 py-0.5 rounded font-mono text-xs">
+                    uvx pramana run --tier cheap --model gpt-4
+                  </code>{' '}
+                  to start contributing.
                 </p>
               </div>
             )}

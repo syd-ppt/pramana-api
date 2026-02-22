@@ -2,52 +2,328 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════
+   PRAMANA — Cosmic Observatory Theme
+   Dark space bg, luminous data, frosted glass
+   ═══════════════════════════════════════════ */
+
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --border: 214.3 31.8% 91.4%;
+  /* Core palette */
+  --bg-void: #0a0a0f;
+  --bg-deep: #0f0f18;
+  --bg-surface: #141422;
+  --bg-elevated: #1a1a2e;
+  --bg-glass: rgba(20, 20, 34, 0.65);
+  --bg-glass-hover: rgba(26, 26, 46, 0.80);
+
+  /* Text */
+  --text-primary: #e8e6f0;
+  --text-secondary: #9896a8;
+  --text-muted: #5c5a6e;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-glass: rgba(255, 255, 255, 0.10);
+  --border-glow: rgba(139, 92, 246, 0.25);
+
+  /* Accent jewel tones */
+  --accent-violet: #8b5cf6;
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+
+  /* Chart line colors — luminous neon */
+  --chart-1: #818cf8; /* indigo */
+  --chart-2: #f472b6; /* pink */
+  --chart-3: #34d399; /* emerald */
+  --chart-4: #fbbf24; /* amber */
+  --chart-5: #22d3ee; /* cyan */
+
+  /* Semantic */
+  --status-good: #10b981;
+  --status-warn: #f59e0b;
+  --status-bad: #f43f5e;
+
+  /* Glow */
+  --glow-violet: 0 0 20px rgba(139, 92, 246, 0.3);
+  --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.3);
+  --glow-emerald: 0 0 15px rgba(16, 185, 129, 0.25);
 }
 
 body {
-  color: rgb(var(--foreground));
-  background: rgb(var(--background));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-void);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Enhanced focus visibility for accessibility */
+/* ── Typography ───────────────────────────── */
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+}
+
+/* ── Glass morphism ───────────────────────── */
+
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid var(--border-glass);
+}
+
+.glass-hover:hover {
+  background: var(--bg-glass-hover);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.glass-elevated {
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--border-glass);
+  box-shadow:
+    0 4px 30px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ── Subtle mesh gradient background ──────── */
+
+.bg-mesh {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(6, 182, 212, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 60% at 50% 90%, rgba(244, 63, 94, 0.04) 0%, transparent 50%),
+    var(--bg-void);
+}
+
+/* ── Glow badge ───────────────────────────── */
+
+.badge-good {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.20);
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.badge-warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.20);
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.badge-bad {
+  background: rgba(244, 63, 94, 0.12);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.20);
+  text-shadow: 0 0 8px rgba(244, 63, 94, 0.4);
+}
+
+/* ── Animated gradient text ───────────────── */
+
+.text-shimmer {
+  background: linear-gradient(
+    135deg,
+    var(--accent-violet) 0%,
+    var(--accent-cyan) 50%,
+    var(--accent-violet) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+/* ── Pulse glow for live indicators ───────── */
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── View toggle pills ────────────────────── */
+
+.toggle-pill {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-pill-active {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.15));
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: var(--text-primary);
+  box-shadow: var(--glow-violet);
+}
+
+/* ── Table row hover ──────────────────────── */
+
+.table-row-hover {
+  transition: background 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background: rgba(139, 92, 246, 0.06);
+}
+
+/* ── Chart container glow border ──────────── */
+
+.chart-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.15),
+    rgba(6, 182, 212, 0.10),
+    rgba(16, 185, 129, 0.08),
+    transparent
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+/* ── Stat card shine ──────────────────────── */
+
+.stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.03),
+    transparent
+  );
+  transition: left 0.6s ease;
+}
+
+.stat-card:hover::after {
+  left: 100%;
+}
+
+/* ── Recharts overrides for dark theme ────── */
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(255, 255, 255, 0.04) !important;
+}
+
+.recharts-text {
+  fill: var(--text-muted) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+}
+
+.recharts-default-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.recharts-reference-line line {
+  stroke-opacity: 0.5;
+}
+
+/* ── Scrollbar ────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Focus ────────────────────────────────── */
+
 *:focus-visible {
-  outline: 2px solid theme('colors.blue.500');
+  outline: 2px solid var(--accent-violet);
   outline-offset: 2px;
 }
 
-/* Smooth scroll behavior */
+/* ── Smooth scroll ────────────────────────── */
+
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
   }
 }
 
-/* Loading spinner animation */
+/* ── Loading spinner ──────────────────────── */
+
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 .animate-spin {
   animation: spin 1s linear infinite;
 }
 
-/* Multi-select option styling - force proper contrast */
+/* ── Multi-select dark styling ────────────── */
+
+select[multiple] {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-glass) !important;
+}
+
 select[multiple] option {
   padding: 0.5rem;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 select[multiple] option:checked {
-  background: #2563eb !important; /* blue-600 */
+  background: rgba(139, 92, 246, 0.3) !important;
   color: white !important;
 }
 
 select[multiple] option:hover {
-  background: #3b82f6 !important; /* blue-500 */
+  background: rgba(139, 92, 246, 0.15) !important;
   color: white !important;
 }

@@ -16,8 +16,9 @@ export default function SignIn() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-600 rounded-full"></div>
+      <div className="min-h-screen bg-mesh flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-2 border-[var(--border-glass)] border-t-[var(--accent-violet)] rounded-full"
+          style={{ boxShadow: 'var(--glow-violet)' }} />
       </div>
     );
   }
@@ -25,21 +26,21 @@ export default function SignIn() {
   if (session) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6">
+    <div className="min-h-screen bg-mesh flex items-center justify-center py-12 px-4 sm:px-6">
       <div className="max-w-md w-full">
-        <div className="bg-white shadow-sm rounded-lg p-8">
+        <div className="glass-elevated rounded-2xl p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            <h1 className="text-3xl font-bold text-shimmer mb-3">
               Sign In to Pramana
             </h1>
-            <p className="text-base text-slate-700">
+            <p className="text-sm text-[var(--text-secondary)]">
               Link your eval submissions to your account
             </p>
           </div>
 
           <SignInButtons providers={["github", "google"]} />
 
-          <div className="mt-8 text-center text-sm text-slate-600">
+          <div className="mt-8 text-center text-sm text-[var(--text-muted)]">
             <p>
               By signing in, you agree to link your eval submissions to your
               account for personalized tracking.

@@ -24,11 +24,51 @@ interface DriftChartProps {
   title?: string;
 }
 
-const COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed'];
+// Luminous neon palette
+const COLORS = ['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#22d3ee'];
+const GLOW_COLORS = [
+  'rgba(129, 140, 248, 0.6)',
+  'rgba(244, 114, 182, 0.6)',
+  'rgba(52, 211, 153, 0.6)',
+  'rgba(251, 191, 36, 0.6)',
+  'rgba(34, 211, 238, 0.6)',
+];
 
 const pctFormatter = (v: number) => `${(v * 100).toFixed(0)}%`;
+const dateFormatter = (d: string) => {
+  const parts = d.split('-');
+  return `${parts[1]}/${parts[2]}`;
+};
 
-// --- Tooltips ---
+/** SVG filter definitions for line glow */
+function GlowFilters() {
+  return (
+    <defs>
+      {COLORS.map((_, i) => (
+        <filter key={i} id={`glow-${i}`} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      ))}
+      <linearGradient id="bar-gradient-drift" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="rgba(244, 63, 94, 0.8)" />
+        <stop offset="100%" stopColor="rgba(244, 63, 94, 0.2)" />
+      </linearGradient>
+    </defs>
+  );
+}
+
+// --- Tooltips (frosted glass) ---
+
+function TooltipShell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="glass-elevated rounded-xl px-4 py-3 text-sm min-w-[200px]"
+      style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(139, 92, 246, 0.1)' }}>
+      <p className="font-mono text-xs text-[var(--text-muted)] mb-2">{label}</p>
+      {children}
+    </div>
+  );
+}
 
 function ConsistencyTooltip({ active, payload, label }: {
   active?: boolean;
@@ -40,30 +80,28 @@ function ConsistencyTooltip({ active, payload, label }: {
   if (!point) return null;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-semibold text-slate-900 mb-2">{label}</p>
+    <TooltipShell label={label}>
       {payload.map((entry) => {
         const model = entry.dataKey.replace(/_consistency$/, '');
         const prompts = point[`${model}_prompts`] || 0;
         const drifted = point[`${model}_drifted`] || 0;
-        const subs = point[model] || 0;
 
         return (
-          <div key={entry.dataKey} className="mb-1.5 last:mb-0">
-            <span className="font-medium" style={{ color: entry.color }}>{model}</span>
-            <div className="text-slate-600 text-xs ml-2">
-              <span className="font-semibold">{(entry.value * 100).toFixed(1)}% consistent</span>
-              <span className="mx-1">|</span>
-              <span>{prompts} prompts</span>
-              <span className="mx-1">|</span>
-              <span>{drifted} drifted</span>
-              <span className="mx-1">|</span>
-              <span>{subs} subs</span>
+          <div key={entry.dataKey} className="mb-2 last:mb-0">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color, boxShadow: `0 0 6px ${entry.color}` }} />
+              <span className="text-[var(--text-primary)] font-medium text-xs">{model}</span>
+              <span className="ml-auto font-mono font-semibold" style={{ color: entry.color }}>
+                {(entry.value * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="text-[var(--text-muted)] text-xs ml-4 mt-0.5 font-mono">
+              {prompts} prompts &middot; {drifted} drifted
             </div>
           </div>
         );
       })}
-    </div>
+    </TooltipShell>
   );
 }
 
@@ -77,28 +115,28 @@ function DriftEventsTooltip({ active, payload, label }: {
   if (!point) return null;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
-      <p className="font-semibold text-slate-900 mb-2">{label}</p>
+    <TooltipShell label={label}>
       {payload.map((entry) => {
         const model = entry.dataKey.replace(/_drifted$/, '');
-        const prompts = point[`${model}_prompts`] || 0;
         const consistency = point[`${model}_consistency`];
-        const consistencyPct = consistency !== undefined ? (consistency * 100).toFixed(1) : '—';
+        const pct = consistency !== undefined ? (consistency * 100).toFixed(1) : '—';
 
         return (
-          <div key={entry.dataKey} className="mb-1.5 last:mb-0">
-            <span className="font-medium" style={{ color: entry.color }}>{model}</span>
-            <div className="text-slate-600 text-xs ml-2">
-              <span className="font-semibold">{entry.value} drifted</span>
-              <span className="mx-1">|</span>
-              <span>{consistencyPct}% consistent</span>
-              <span className="mx-1">|</span>
-              <span>{prompts} prompts</span>
+          <div key={entry.dataKey} className="mb-2 last:mb-0">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color, boxShadow: `0 0 6px ${entry.color}` }} />
+              <span className="text-[var(--text-primary)] font-medium text-xs">{model}</span>
+              <span className="ml-auto font-mono font-semibold" style={{ color: entry.color }}>
+                {entry.value}
+              </span>
+            </div>
+            <div className="text-[var(--text-muted)] text-xs ml-4 mt-0.5 font-mono">
+              {pct}% consistent
             </div>
           </div>
         );
       })}
-    </div>
+    </TooltipShell>
   );
 }
 
@@ -108,12 +146,33 @@ function ConsistencyChart({ data, models }: { data: DriftChartProps['data']; mod
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis domain={[0.6, 1.0]} tickFormatter={pctFormatter} />
-        <ReferenceLine y={0.95} stroke="#94a3b8" strokeDasharray="6 3" label={{ value: '95%', position: 'right', fill: '#94a3b8', fontSize: 12 }} />
+        <GlowFilters />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={dateFormatter}
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
+        <YAxis
+          domain={[0.6, 1.0]}
+          tickFormatter={pctFormatter}
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
+        <ReferenceLine
+          y={0.95}
+          stroke="rgba(139, 92, 246, 0.3)"
+          strokeDasharray="6 4"
+          label={{ value: '95%', position: 'right', fill: 'rgba(139, 92, 246, 0.5)', fontSize: 11 }}
+        />
         <Tooltip content={<ConsistencyTooltip />} />
-        <Legend />
+        <Legend
+          wrapperStyle={{ paddingTop: 8 }}
+          formatter={(value: string) => (
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{value}</span>
+          )}
+        />
         {models.map((model, idx) => (
           <Line
             key={model}
@@ -121,9 +180,16 @@ function ConsistencyChart({ data, models }: { data: DriftChartProps['data']; mod
             name={model}
             dataKey={`${model}_consistency`}
             stroke={COLORS[idx % COLORS.length]}
-            strokeWidth={2}
-            dot={{ r: 2 }}
-            activeDot={{ r: 5, strokeWidth: 2 }}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{
+              r: 5,
+              strokeWidth: 2,
+              stroke: COLORS[idx % COLORS.length],
+              fill: 'var(--bg-surface)',
+              style: { filter: `drop-shadow(0 0 6px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` },
+            }}
+            style={{ filter: `drop-shadow(0 0 4px ${GLOW_COLORS[idx % GLOW_COLORS.length]})` }}
           />
         ))}
       </LineChart>
@@ -135,11 +201,24 @@ function DriftEventsChart({ data, models }: { data: DriftChartProps['data']; mod
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={dateFormatter}
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
+        <YAxis
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
         <Tooltip content={<DriftEventsTooltip />} />
-        <Legend />
+        <Legend
+          wrapperStyle={{ paddingTop: 8 }}
+          formatter={(value: string) => (
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{value}</span>
+          )}
+        />
         {models.map((model, idx) => (
           <Bar
             key={model}
@@ -147,6 +226,8 @@ function DriftEventsChart({ data, models }: { data: DriftChartProps['data']; mod
             dataKey={`${model}_drifted`}
             stackId="drift"
             fill={COLORS[idx % COLORS.length]}
+            opacity={0.75}
+            radius={idx === models.length - 1 ? [2, 2, 0, 0] : undefined}
           />
         ))}
       </BarChart>
@@ -158,11 +239,24 @@ function ActivityBars({ data, models }: { data: DriftChartProps['data']; models:
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={dateFormatter}
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
+        <YAxis
+          stroke="rgba(255,255,255,0.08)"
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+        />
         <Tooltip />
-        <Legend />
+        <Legend
+          wrapperStyle={{ paddingTop: 8 }}
+          formatter={(value: string) => (
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{value}</span>
+          )}
+        />
         {models.map((model, idx) => (
           <Bar
             key={model}
@@ -170,7 +264,8 @@ function ActivityBars({ data, models }: { data: DriftChartProps['data']; models:
             dataKey={model}
             stackId="subs"
             fill={COLORS[idx % COLORS.length]}
-            opacity={0.7}
+            opacity={0.5}
+            radius={idx === models.length - 1 ? [2, 2, 0, 0] : undefined}
           />
         ))}
       </BarChart>
@@ -192,8 +287,8 @@ export default function DriftChart({ data, models, view = 'consistency', title }
   const heading = title ?? VIEW_TITLES[view];
 
   return (
-    <div className="w-full bg-white p-4 sm:p-6 rounded-lg shadow-sm">
-      <h2 className="text-xl font-bold mb-4 text-slate-900">{heading}</h2>
+    <div className="chart-container glass-elevated rounded-2xl p-5 sm:p-6">
+      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 tracking-tight">{heading}</h2>
 
       {view === 'consistency' && (
         <div className="w-full h-64 sm:h-80 lg:h-96">
@@ -206,9 +301,11 @@ export default function DriftChart({ data, models, view = 'consistency', title }
           <div className="w-full h-48 sm:h-64 lg:h-72">
             <ConsistencyChart data={data} models={models} />
           </div>
-          <h3 className="text-sm font-semibold text-slate-500 mt-4 mb-2">Submissions</h3>
-          <div className="w-full h-32 sm:h-40">
-            <ActivityBars data={data} models={models} />
+          <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+            <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Submissions</h3>
+            <div className="w-full h-32 sm:h-40">
+              <ActivityBars data={data} models={models} />
+            </div>
           </div>
         </>
       )}

@@ -25,34 +25,34 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow mb-6">
-      <h3 className="text-lg font-semibold mb-4 text-slate-800">Filters</h3>
+    <div className="glass-elevated rounded-2xl p-5 mb-6">
+      <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">Filters</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium mb-1 text-slate-700">Start Date</label>
+          <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">Start Date</label>
           <input
             type="date"
             value={filters.startDate}
             onChange={(e) => updateFilters({ startDate: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent transition-all"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-slate-700">End Date</label>
+          <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">End Date</label>
           <input
             type="date"
             value={filters.endDate}
             onChange={(e) => updateFilters({ endDate: e.target.value })}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent transition-all"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-slate-700">
+          <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">
             Models {filters.selectedModels.length === 0 && availableModels.length > 0 && (
-              <span className="text-slate-400 font-normal">(showing all)</span>
+              <span className="text-[var(--text-muted)] font-normal">(showing all)</span>
             )}
           </label>
           <select
@@ -63,7 +63,7 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
                 selectedModels: Array.from(e.target.selectedOptions, option => option.value),
               })
             }
-            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent [&>option:checked]:bg-blue-600 [&>option:checked]:text-white [&>option]:py-2 h-24 sm:h-20"
+            className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent h-24 sm:h-20 transition-all"
           >
             {availableModels.map(model => (
               <option key={model} value={model}>

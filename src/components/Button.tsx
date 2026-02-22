@@ -24,10 +24,10 @@ interface ButtonAsLinkProps extends BaseButtonProps, Omit<AnchorHTMLAttributes<H
 type ButtonProps = ButtonAsButtonProps | ButtonAsLinkProps;
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-blue-600 hover:bg-blue-700 text-white border border-transparent focus:ring-blue-500',
-  secondary: 'bg-white hover:bg-slate-50 text-slate-900 border-2 border-slate-300 hover:border-slate-400 focus:ring-slate-500',
-  ghost: 'bg-transparent hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-transparent focus:ring-slate-500',
-  danger: 'bg-red-600 hover:bg-red-700 text-white border border-transparent focus:ring-red-500',
+  primary: 'bg-[var(--accent-violet)] hover:bg-[#7c3aed] text-white border border-transparent focus:ring-[var(--accent-violet)] shadow-[0_0_15px_rgba(139,92,246,0.3)]',
+  secondary: 'glass glass-hover text-[var(--text-primary)] focus:ring-[var(--accent-violet)]',
+  ghost: 'bg-transparent hover:bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent focus:ring-[var(--accent-violet)]',
+  danger: 'bg-[var(--accent-rose)] hover:bg-[#e11d48] text-white border border-transparent focus:ring-[var(--accent-rose)] shadow-[0_0_15px_rgba(244,63,94,0.3)]',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -37,12 +37,11 @@ const sizeClasses: Record<ButtonSize, string> = {
 };
 
 export default function Button({ variant = 'primary', size = 'md', children, className = '', ...props }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--bg-void)] disabled:opacity-50 disabled:cursor-not-allowed';
   const classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
 
   if ('href' in props && props.href) {
     const { href, ...rest } = props as ButtonAsLinkProps;
-    // External links use <a>, internal links use react-router <Link>
     if (href.startsWith('http')) {
       return (
         <a href={href} className={classes} {...rest}>
