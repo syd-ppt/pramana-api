@@ -16,10 +16,9 @@ Only the latest version on `main` is actively maintained.
 
 ## Security Measures
 
-- HTTPS enforced via Vercel
-- JWT-based authentication (NextAuth.js)
+- HTTPS enforced
+- JWT-based authentication
 - OAuth providers (GitHub, Google) — no password storage
-- Rate limiting (60 req/min per IP)
 - CORS restricted to deployment domain
 - Storage bucket is private; all reads go through server-side API
 - User-partitioned storage paths

@@ -1,7 +1,6 @@
 // @vitest-environment node
 /**
- * Auth route tests — adapted from old lib/auth.test.ts (NextAuth).
- * Tests provider configuration, session endpoint, and signout.
+ * Auth route tests — provider configuration, session endpoint, signout.
  */
 import { describe, it, expect } from 'vitest'
 import { Hono } from 'hono'

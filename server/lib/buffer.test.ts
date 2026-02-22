@@ -62,6 +62,7 @@ function makeRecord(overrides: Partial<StorageRecord> = {}): StorageRecord {
     year: 2026,
     month: 2,
     day: 21,
+    score: null,
     ...overrides,
   }
 }
@@ -151,11 +152,28 @@ describe('updateUserSummary', () => {
 
     const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord()])
 
+    expect(summary.version).toBe(2)
     expect(summary.total_submissions).toBe(1)
-    expect(summary.date_counts['2026-02-21']['gpt-5']).toBe(1)
+    expect(summary.date_stats['2026-02-21']['gpt-5'].count).toBe(1)
+    // No score provided, so n should be 0
+    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(0)
   })
 
-  it('accumulates into existing summary', async () => {
+  it('creates summary with scored record', async () => {
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+    mockUploadFile.mockResolvedValue(undefined)
+
+    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord({ score: 0.8 })])
+
+    expect(summary.total_submissions).toBe(1)
+    expect(summary.total_scored).toBe(1)
+    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(1)
+    expect(summary.date_stats['2026-02-21']['gpt-5'].mean).toBe(0.8)
+    expect(summary.model_stats['gpt-5'].n).toBe(1)
+    expect(summary.model_stats['gpt-5'].mean).toBe(0.8)
+  })
+
+  it('migrates v1 summary and accumulates', async () => {
     const existing = JSON.stringify({
       date_counts: { '2026-02-20': { 'gpt-4': 3 } },
       total_submissions: 3,
@@ -166,11 +184,17 @@ describe('updateUserSummary', () => {
     })
     mockUploadFileConditional.mockResolvedValue(undefined)
 
-    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord()])
+    const summary = await updateUserSummary(fakeBucket, 'user1', [makeRecord({ score: 0.9 })])
 
+    expect(summary.version).toBe(2)
     expect(summary.total_submissions).toBe(4)
-    expect(summary.date_counts['2026-02-20']['gpt-4']).toBe(3)
-    expect(summary.date_counts['2026-02-21']['gpt-5']).toBe(1)
+    // v1 data migrated: count preserved, no score data
+    expect(summary.date_stats['2026-02-20']['gpt-4'].count).toBe(3)
+    expect(summary.date_stats['2026-02-20']['gpt-4'].n).toBe(0)
+    // New record with score
+    expect(summary.date_stats['2026-02-21']['gpt-5'].count).toBe(1)
+    expect(summary.date_stats['2026-02-21']['gpt-5'].n).toBe(1)
+    expect(summary.date_stats['2026-02-21']['gpt-5'].mean).toBe(0.9)
   })
 })
 

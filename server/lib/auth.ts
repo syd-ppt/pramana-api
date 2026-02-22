@@ -1,6 +1,5 @@
 /**
  * JWT auth helpers using jose (Workers-compatible).
- * Replaces NextAuth + node:crypto.
  */
 import { SignJWT, jwtVerify } from 'jose'
 

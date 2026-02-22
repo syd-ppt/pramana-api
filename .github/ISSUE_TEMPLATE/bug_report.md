@@ -20,6 +20,5 @@ What should have happened?
 ## Environment
 
 - OS:
-- Python version:
 - Node version:
 - Browser (if dashboard):

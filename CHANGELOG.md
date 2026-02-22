@@ -7,10 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- FastAPI submission API with Parquet storage
-- Next.js dashboard with drift visualization
-- Server-side data aggregation via PyArrow
-- GitHub/Google OAuth authentication (NextAuth.js)
-- GDPR-compliant user data deletion/anonymization
+- Submission API with append-only storage
+- Dashboard with drift visualization
 - Welch's t-test degradation detection
-- Two-project Vercel deployment (dashboard + API)
+- GitHub/Google OAuth authentication
+- GDPR-compliant user data deletion
+- Daily cron compaction

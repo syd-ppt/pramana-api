@@ -55,6 +55,7 @@ export const submitRoutes = new Hono<Env>()
       year: now.getUTCFullYear(),
       month: now.getUTCMonth() + 1,
       day: now.getUTCDate(),
+      score: submission.score ?? null,
     }
 
     const bucket = c.env.PRAMANA_DATA
@@ -104,6 +105,7 @@ export const submitRoutes = new Hono<Env>()
         year: now.getUTCFullYear(),
         month: now.getUTCMonth() + 1,
         day: now.getUTCDate(),
+        score: submission.score ?? null,
       })
 
       results.push({ id, hash: `sha256:${outputHash}` })

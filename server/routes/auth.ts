@@ -1,6 +1,5 @@
 /**
- * OAuth routes — manual GitHub/Google OAuth + jose JWT.
- * Replaces NextAuth.js entirely.
+ * OAuth routes — GitHub/Google OAuth + jose JWT.
  */
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
