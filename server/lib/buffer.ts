@@ -89,46 +89,17 @@ function recordToCsvRow(r: StorageRecord): string {
   ].join(',')
 }
 
-function parseCsvRow(line: string): StorageRecord | null {
-  if (!line.trim()) return null
-  // RFC 4180 parser -- handles quoted fields with commas/newlines
-  const fields: string[] = []
-  let i = 0
-  while (i < line.length) {
-    if (line[i] === '"') {
-      let j = i + 1
-      let value = ''
-      while (j < line.length) {
-        if (line[j] === '"') {
-          if (j + 1 < line.length && line[j + 1] === '"') {
-            value += '"'
-            j += 2
-          } else {
-            j++
-            break
-          }
-        } else {
-          value += line[j]
-          j++
-        }
-      }
-      fields.push(value)
-      i = j + 1
-    } else {
-      const comma = line.indexOf(',', i)
-      if (comma === -1) {
-        fields.push(line.slice(i))
-        break
-      }
-      fields.push(line.slice(i, comma))
-      i = comma + 1
-    }
-  }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function fieldsToRecord(fields: string[]): StorageRecord | null {
   // Support both 11-field (legacy, no score) and 12-field rows
   if (fields.length < 11) return null
+  const id = fields[0]
+  // Guard against garbage rows from past CSV corruption
+  if (!UUID_RE.test(id)) return null
   const scoreStr = fields.length >= 12 ? fields[11] : ''
   return {
-    id: fields[0],
+    id,
     timestamp: fields[1],
     user_id: fields[2],
     model_id: fields[3],
@@ -143,13 +114,77 @@ function parseCsvRow(line: string): StorageRecord | null {
   }
 }
 
+/**
+ * RFC 4180 CSV parser — handles quoted fields with embedded newlines, commas, and quotes.
+ * Previous implementation split on \n first, breaking multi-line quoted fields.
+ */
 function parseCsvBody(csv: string): StorageRecord[] {
-  const lines = csv.split('\n')
   const records: StorageRecord[] = []
-  for (let i = 1; i < lines.length; i++) {
-    const rec = parseCsvRow(lines[i])
-    if (rec) records.push(rec)
+  const len = csv.length
+  let pos = 0
+
+  // Skip header line
+  while (pos < len && csv[pos] !== '\n') pos++
+  pos++ // skip the \n
+
+  while (pos < len) {
+    const fields: string[] = []
+    // Parse one record (may span multiple lines due to quoted fields)
+    while (pos < len) {
+      if (csv[pos] === '"') {
+        // Quoted field — read until closing quote (handles embedded newlines)
+        pos++ // skip opening quote
+        let value = ''
+        while (pos < len) {
+          if (csv[pos] === '"') {
+            if (pos + 1 < len && csv[pos + 1] === '"') {
+              value += '"'
+              pos += 2
+            } else {
+              pos++ // skip closing quote
+              break
+            }
+          } else {
+            value += csv[pos]
+            pos++
+          }
+        }
+        fields.push(value)
+        // Skip comma or newline after closing quote
+        if (pos < len && csv[pos] === ',') {
+          pos++
+        } else {
+          // End of record (\n, \r\n, or EOF)
+          if (pos < len && csv[pos] === '\r') pos++
+          if (pos < len && csv[pos] === '\n') pos++
+          break
+        }
+      } else if (csv[pos] === '\n' || csv[pos] === '\r') {
+        // End of record (empty trailing field or end of line)
+        if (csv[pos] === '\r') pos++
+        if (pos < len && csv[pos] === '\n') pos++
+        break
+      } else {
+        // Unquoted field — read until comma or newline
+        const start = pos
+        while (pos < len && csv[pos] !== ',' && csv[pos] !== '\n' && csv[pos] !== '\r') pos++
+        fields.push(csv.slice(start, pos))
+        if (pos < len && csv[pos] === ',') {
+          pos++
+        } else {
+          if (pos < len && csv[pos] === '\r') pos++
+          if (pos < len && csv[pos] === '\n') pos++
+          break
+        }
+      }
+    }
+
+    if (fields.length > 0) {
+      const rec = fieldsToRecord(fields)
+      if (rec) records.push(rec)
+    }
   }
+
   return records
 }
 
@@ -586,16 +621,12 @@ export async function deleteUserFromBuffer(
   if (!body) return 0
 
   const csv = decoder.decode(await gunzip(body))
-  const lines = csv.split('\n')
-  const header = lines[0]
-  const filtered = lines.slice(1).filter((line) => {
-    const rec = parseCsvRow(line)
-    return rec ? rec.user_id !== userId : true
-  })
-  const removed = lines.length - 1 - filtered.length
+  const allRecords = parseCsvBody(csv)
+  const filtered = allRecords.filter((r) => r.user_id !== userId)
+  const removed = allRecords.length - filtered.length
 
   if (removed > 0) {
-    const newCsv = header + '\n' + filtered.join('\n')
+    const newCsv = CSV_HEADERS + '\n' + filtered.map(recordToCsvRow).join('\n')
     const compressed = await gzip(encoder.encode(newCsv))
     if (etag) {
       await uploadFileConditional(bucket, BUFFER_KEY, compressed, etag)

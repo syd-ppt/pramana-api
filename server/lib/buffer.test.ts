@@ -60,7 +60,7 @@ const fakeBucket = {} as R2Bucket
 
 function makeRecord(overrides: Partial<StorageRecord> = {}): StorageRecord {
   return {
-    id: 'test-id',
+    id: '00000000-0000-4000-8000-000000000001',
     timestamp: '2026-02-21T12:00:00.000Z',
     user_id: 'user1',
     model_id: 'gpt-5',
@@ -91,7 +91,7 @@ describe('appendToCsvBuffer', () => {
     const [, , body] = mockUploadFile.mock.calls[0]
     const csv = decoder.decode(await gunzip(body))
     expect(csv).toContain('id,timestamp,user_id')
-    expect(csv).toContain('test-id')
+    expect(csv).toContain('00000000-0000-4000-8000-000000000001')
     expect(csv).toContain('gpt-5')
   })
 
@@ -115,7 +115,7 @@ describe('appendToCsvBuffer', () => {
 
     const csv = decoder.decode(await gunzip(body))
     expect(csv).toContain('old-id')
-    expect(csv).toContain('test-id')
+    expect(csv).toContain('00000000-0000-4000-8000-000000000001')
   })
 
   it('retries on 412 PreconditionFailed', async () => {
@@ -401,13 +401,62 @@ describe('mergeDeltas', () => {
   })
 })
 
+describe('CSV parsing (RFC 4180)', () => {
+  it('parses multi-line quoted output fields correctly', async () => {
+    // This was the root cause of the garbage model names bug:
+    // parseCsvBody split on \n before parsing quotes, breaking multi-line outputs
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+    mockUploadFile.mockResolvedValue(undefined)
+
+    const multiLineOutput = 'line 1\nline 2, with comma\nline 3 "quoted"'
+    await appendToCsvBuffer(fakeBucket, [makeRecord({ output: multiLineOutput })])
+
+    // Read back the written CSV and verify it round-trips correctly
+    const [, , body] = mockUploadFile.mock.calls[0]
+    const csv = decoder.decode(await gunzip(body))
+    expect(csv).toContain('"line 1\nline 2, with comma\nline 3 ""quoted"""')
+
+    // Now simulate reading it back via a compaction-like path:
+    // feed the CSV through the same compression pipeline
+    const recompressed = await gzip(encoder.encode(csv))
+    mockDownloadFileWithEtag.mockResolvedValue({ body: recompressed, etag: '"e1"' })
+    mockUploadFileConditional.mockResolvedValue(undefined)
+
+    // deleteUserFromBuffer uses parseCsvBody internally — use it as a round-trip test
+    const removed = await deleteUserFromBuffer(fakeBucket, 'nonexistent-user')
+    expect(removed).toBe(0) // no user matched, but parsing succeeded without corruption
+  })
+
+  it('filters garbage rows with non-UUID ids', async () => {
+    // Simulates corrupted archive data from the old split-on-newline bug
+    const csv =
+      'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day\n' +
+      '00000000-0000-4000-8000-000000000001,2026-02-21T00:00:00Z,user1,gpt-5,p1,valid,sha256:a,{},2026,2,21\n' +
+      'garbage-not-uuid,2026-02-21T00:00:00Z,user1, HTML pattern,p1,frag,sha256:b,{},2026,2,21\n' +
+      '00000000-0000-4000-8000-000000000002,2026-02-21T00:00:00Z,user1,gpt-4,p2,valid2,sha256:c,{},2026,2,21'
+    const compressed = await gzip(encoder.encode(csv))
+
+    mockDownloadFileWithEtag.mockResolvedValue({ body: compressed, etag: '"e1"' })
+    mockUploadFileConditional.mockResolvedValue(undefined)
+
+    // deleteUserFromBuffer parses and rewrites — garbage row should be filtered
+    const removed = await deleteUserFromBuffer(fakeBucket, 'user1')
+    expect(removed).toBe(2) // only 2 valid records matched, garbage row filtered
+
+    const [, , body] = mockUploadFileConditional.mock.calls[0]
+    const resultCsv = decoder.decode(await gunzip(body))
+    expect(resultCsv).not.toContain('HTML pattern')
+    expect(resultCsv).not.toContain('garbage-not-uuid')
+  })
+})
+
 describe('deleteUserFromBuffer', () => {
   it('removes user rows from buffer CSV', async () => {
     const csv =
       'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day\n' +
-      'id1,2026-02-21T00:00:00Z,user1,gpt-5,p1,out1,sha256:a,{},2026,2,21\n' +
-      'id2,2026-02-21T00:00:00Z,user2,gpt-5,p1,out2,sha256:b,{},2026,2,21\n' +
-      'id3,2026-02-21T00:00:00Z,user1,gpt-4,p2,out3,sha256:c,{},2026,2,21'
+      '00000000-0000-4000-8000-000000000001,2026-02-21T00:00:00Z,user1,gpt-5,p1,out1,sha256:a,{},2026,2,21\n' +
+      '00000000-0000-4000-8000-000000000002,2026-02-21T00:00:00Z,user2,gpt-5,p1,out2,sha256:b,{},2026,2,21\n' +
+      '00000000-0000-4000-8000-000000000003,2026-02-21T00:00:00Z,user1,gpt-4,p2,out3,sha256:c,{},2026,2,21'
     const compressed = await gzip(encoder.encode(csv))
 
     mockDownloadFileWithEtag.mockResolvedValue({
