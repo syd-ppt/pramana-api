@@ -45,7 +45,7 @@ npm test
 
 ## Code Style
 
-TypeScript. Run `npm run lint` before committing.
+TypeScript with strict mode. Run `npm test` before committing.
 
 ## Reporting Issues
 

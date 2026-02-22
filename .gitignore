@@ -7,6 +7,9 @@
 
 .claude/
 .next/
+.vercel/
+.venv/
+__pycache__/
 .vscode/
 .idea/
 .cache/
