@@ -133,6 +133,20 @@ export function interpretEffect(d: number): string {
   return 'large'
 }
 
+// -- Binary score detection --
+
+/** Detect if a ModelDayStats represents binary (0/1) scores from Welford stats. */
+export function isBinaryScore(stats: ModelDayStats): boolean {
+  if (stats.n < 2) return false
+  // All pass or all fail — trivially binary
+  if (stats.mean === 0 || stats.mean === 1) return true
+  // Expected variance for Bernoulli: p*(1-p)
+  const expectedVar = stats.mean * (1 - stats.mean)
+  const actualVar = welfordVariance(stats)
+  // Binary data has variance exactly p*(1-p); allow 5% tolerance for floating point
+  return Math.abs(actualVar - expectedVar) <= 0.05 * expectedVar
+}
+
 // -- Wilson confidence interval (for binary scores) --
 
 export function wilsonCI(

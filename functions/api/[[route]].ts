@@ -10,6 +10,7 @@ import { dataRoutes } from '../../server/routes/data'
 import { userRoutes } from '../../server/routes/user'
 import { adminRoutes } from '../../server/routes/admin'
 import { authRoutes } from '../../server/routes/auth'
+import { badgeRoutes } from '../../server/routes/badge'
 
 type Env = {
   Bindings: {
@@ -31,5 +32,6 @@ app.route('/data', dataRoutes)
 app.route('/user', userRoutes)
 app.route('/admin', adminRoutes)
 app.route('/auth', authRoutes)
+app.route('/badge', badgeRoutes)
 
 export const onRequest = handle(app)

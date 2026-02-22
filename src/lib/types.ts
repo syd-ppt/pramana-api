@@ -12,6 +12,7 @@ export interface ChartApiResponse {
   models: string[];
   total_submissions: number;
   total_scored: number;
+  total_contributors: number;
 }
 
 export interface ModelStatEntry {

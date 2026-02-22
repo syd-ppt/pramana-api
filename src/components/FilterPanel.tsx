@@ -9,6 +9,8 @@ export interface Filters {
   startDate: string;
   endDate: string;
   selectedModels: string[];
+  recentWindow: number;
+  baselineWindow: number;
 }
 
 export default function FilterPanel({ onFilterChange, availableModels }: FilterPanelProps) {
@@ -16,6 +18,8 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     selectedModels: [],
+    recentWindow: 7,
+    baselineWindow: 7,
   });
 
   const updateFilters = (updates: Partial<Filters>) => {
@@ -28,7 +32,7 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
     <div className="bg-white p-6 rounded-lg shadow mb-6">
       <h3 className="text-lg font-semibold mb-4 text-slate-800">Filters</h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Date Range */}
         <div>
           <label className="block text-sm font-medium mb-1 text-slate-700">Start Date</label>
@@ -46,6 +50,31 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
             type="date"
             value={filters.endDate}
             onChange={(e) => updateFilters({ endDate: e.target.value })}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        {/* Analysis Windows */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-slate-700">Recent (days)</label>
+          <input
+            type="number"
+            min={2}
+            max={30}
+            value={filters.recentWindow}
+            onChange={(e) => updateFilters({ recentWindow: Math.max(2, Math.min(30, parseInt(e.target.value) || 7)) })}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1 text-slate-700">Baseline (days)</label>
+          <input
+            type="number"
+            min={2}
+            max={30}
+            value={filters.baselineWindow}
+            onChange={(e) => updateFilters({ baselineWindow: Math.max(2, Math.min(30, parseInt(e.target.value) || 7)) })}
             className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>

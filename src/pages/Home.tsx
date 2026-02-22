@@ -32,12 +32,15 @@ export default function Home() {
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     selectedModels: [],
+    recentWindow: 7,
+    baselineWindow: 7,
   });
 
   const [rawData, setRawData] = useState<ChartDataPoint[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
   const [totalScored, setTotalScored] = useState(0);
+  const [totalContributors, setTotalContributors] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +61,7 @@ export default function Home() {
         setRawData(json.data || []);
         setTotalSubmissions(json.total_submissions || 0);
         setTotalScored(json.total_scored || 0);
+        setTotalContributors(json.total_contributors || 0);
         if (json.models?.length > 0) setAvailableModels(json.models);
       } catch (err) {
         if (!cancelled) {
@@ -84,17 +88,17 @@ export default function Home() {
     ? filters.selectedModels
     : availableModels;
 
-  // Degradation detection: pool recent 7 vs baseline 7 per model, then Holm-Bonferroni
+  // Degradation detection: pool recent vs baseline per model, then Holm-Bonferroni
   const { degradationResults, adjustedPValues } = useMemo(() => {
     const results = new Map<string, DegradationResult>();
     const pValues: { key: string; p: number }[] = [];
 
     for (const model of displayModels) {
-      const recent7 = getDayStats(chartData, model, 7);
-      const prior7 = getDayStats(chartData.slice(0, -7), model, 7);
+      const recentDays = getDayStats(chartData, model, filters.recentWindow);
+      const baselineDays = getDayStats(chartData.slice(0, -filters.recentWindow), model, filters.baselineWindow);
 
-      const recentPooled = poolStats(recent7);
-      const baselinePooled = poolStats(prior7);
+      const recentPooled = poolStats(recentDays);
+      const baselinePooled = poolStats(baselineDays);
 
       const result = detectDegradationFromStats(recentPooled, baselinePooled);
       results.set(model, result);
@@ -103,17 +107,17 @@ export default function Home() {
 
     const adjusted = holmBonferroni(pValues);
     return { degradationResults: results, adjustedPValues: adjusted };
-  }, [chartData, displayModels]);
+  }, [chartData, displayModels, filters.recentWindow, filters.baselineWindow]);
 
   // Build summary table data
   const summaryTableData = useMemo(() => {
     return displayModels.map((model) => {
       const result = degradationResults.get(model);
       const adj = adjustedPValues.get(model);
-      const recent7 = getDayStats(chartData, model, 7);
-      const prior7 = getDayStats(chartData.slice(0, -7), model, 7);
-      const recentPooled = poolStats(recent7);
-      const baselinePooled = poolStats(prior7);
+      const recentDays = getDayStats(chartData, model, filters.recentWindow);
+      const baselineDays = getDayStats(chartData.slice(0, -filters.recentWindow), model, filters.baselineWindow);
+      const recentPooled = poolStats(recentDays);
+      const baselinePooled = poolStats(baselineDays);
 
       return {
         model,
@@ -127,7 +131,7 @@ export default function Home() {
         effectLabel: result?.effectLabel ?? 'negligible',
       };
     });
-  }, [displayModels, chartData, degradationResults, adjustedPValues]);
+  }, [displayModels, chartData, degradationResults, adjustedPValues, filters.recentWindow, filters.baselineWindow]);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -140,6 +144,7 @@ export default function Home() {
             {totalSubmissions > 0 && <span>{totalSubmissions.toLocaleString()} submissions</span>}
             {totalScored > 0 && <span>{totalScored.toLocaleString()} scored</span>}
             {displayModels.length > 0 && <span>{displayModels.length} models</span>}
+            {totalContributors > 0 && <span>{totalContributors.toLocaleString()} contributors</span>}
           </div>
         </header>
 

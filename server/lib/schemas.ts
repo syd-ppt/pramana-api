@@ -59,6 +59,7 @@ export interface ChartJson {
   models: string[];
   total_submissions: number;
   total_scored: number;
+  total_contributors: number;
 }
 
 /** Per-user summary stored as _users/{user_id}/summary.json */

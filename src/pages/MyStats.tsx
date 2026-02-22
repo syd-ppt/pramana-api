@@ -3,14 +3,18 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '@/lib/auth';
 import Button from '@/components/Button';
 import ComparisonTable from '@/components/ComparisonTable';
-import type { UserStatsResponse, ChartApiResponse } from '@/lib/types';
+import DrillDownChart from '@/components/DrillDownChart';
+import type { UserStatsResponse, UserSummaryResponse, ChartApiResponse, ChartDataPoint } from '@/lib/types';
 
 export default function MyStats() {
   const { session, status } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<UserStatsResponse | null>(null);
+  const [userSummary, setUserSummary] = useState<UserSummaryResponse | null>(null);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [communityTotal, setCommunityTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -26,10 +30,14 @@ export default function MyStats() {
         .then((r) => (r.ok ? r.json() as Promise<UserStatsResponse> : null)),
       fetch('/api/data/chart')
         .then((r) => (r.ok ? r.json() as Promise<ChartApiResponse> : null)),
+      fetch('/api/user/me/summary', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() as Promise<UserSummaryResponse> : null)),
     ])
-      .then(([statsData, chartData]) => {
+      .then(([statsData, chartResp, summaryData]) => {
         setStats(statsData);
-        setCommunityTotal(chartData?.total_submissions ?? 0);
+        setCommunityTotal(chartResp?.total_submissions ?? 0);
+        setChartData(chartResp?.data ?? []);
+        setUserSummary(summaryData);
       })
       .catch(() => setStats(null))
       .finally(() => setLoading(false));
@@ -129,7 +137,15 @@ export default function MyStats() {
                 <h2 className="text-xl font-semibold text-slate-900 mb-4">
                   Your Results vs Community
                 </h2>
-                <ComparisonTable />
+                <ComparisonTable onModelClick={setSelectedModel} />
+                {selectedModel && userSummary && (
+                  <DrillDownChart
+                    model={selectedModel}
+                    userDateStats={userSummary.date_stats}
+                    chartData={chartData}
+                    onClose={() => setSelectedModel(null)}
+                  />
+                )}
               </div>
             )}
 

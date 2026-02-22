@@ -336,7 +336,7 @@ export async function readUserSummary(
 
 export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
   const { body } = await downloadFileWithEtag(bucket, CHART_KEY)
-  if (!body) return { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0 }
+  if (!body) return { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0, total_contributors: 0 }
   return JSON.parse(decoder.decode(body)) as ChartJson
 }
 
@@ -355,7 +355,7 @@ function aggregateRecords(records: StorageRecord[], into: ChartJson): void {
 }
 
 export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
-  const chart: ChartJson = { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0 }
+  const chart: ChartJson = { version: 2, data: {}, models: [], total_submissions: 0, total_scored: 0, total_contributors: 0 }
 
   const archiveKeys = await listFiles(bucket, ARCHIVE_PREFIX)
   for (const key of archiveKeys) {
@@ -364,6 +364,10 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     const csv = decoder.decode(await gunzip(buf))
     aggregateRecords(parseCsvBody(csv), chart)
   }
+
+  // Count unique contributors from user summary files
+  const userKeys = await listFiles(bucket, USERS_PREFIX)
+  chart.total_contributors = userKeys.filter(k => k.endsWith('/summary.json')).length
 
   chart.models.sort()
   await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
