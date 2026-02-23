@@ -230,10 +230,10 @@ describe('updateUserSummary', () => {
 })
 
 describe('readChartJson', () => {
-  it('returns empty v4 structure when file missing', async () => {
+  it('returns empty v5 structure when file missing', async () => {
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     const chart = await readChartJson(fakeBucket)
-    expect(chart.version).toBe(4)
+    expect(chart.version).toBe(5)
     expect(chart.data).toEqual({})
     expect(chart.models).toEqual([])
     expect(chart.total_submissions).toBe(0)
@@ -241,7 +241,7 @@ describe('readChartJson', () => {
     expect(chart._known_users).toEqual([])
   })
 
-  it('migrates v3 chart to v4 on read', async () => {
+  it('migrates v3 chart to v5 on read (daily keys get -00 suffix)', async () => {
     const json = JSON.stringify({
       version: 3,
       data: {
@@ -259,14 +259,14 @@ describe('readChartJson', () => {
     })
 
     const chart = await readChartJson(fakeBucket)
-    expect(chart.version).toBe(4)
+    expect(chart.version).toBe(5)
     expect(chart._prev_hashes).toEqual({})
     expect(chart._known_users).toEqual([])
     expect(chart.total_submissions).toBe(5)
-    expect(chart.data['2026-02-21']['gpt-5'].submissions).toBe(5)
+    expect(chart.data['2026-02-21-00']['gpt-5'].submissions).toBe(5)
   })
 
-  it('parses existing v4 chart JSON', async () => {
+  it('migrates existing v4 chart JSON (daily keys get -00 suffix)', async () => {
     const json = JSON.stringify({
       version: 4,
       data: {
@@ -286,7 +286,8 @@ describe('readChartJson', () => {
     })
 
     const chart = await readChartJson(fakeBucket)
-    expect(chart.version).toBe(4)
+    expect(chart.version).toBe(5)
+    expect(chart.data['2026-02-21-00']['gpt-5'].submissions).toBe(5)
     expect(chart._prev_hashes['gpt-5|prompt1']).toBe('sha256:abc')
     expect(chart._known_users).toEqual(['user1'])
   })
@@ -308,7 +309,7 @@ describe('writeDelta', () => {
     expect(delta.records[0].prompt_id).toBe('prompt1')
     expect(delta.records[0].output_hash).toBe('sha256:abc')
     expect(delta.records[0].user_id).toBe('user1')
-    expect(delta.day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(delta.bucket).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}$/)
     expect(typeof delta.ts).toBe('number')
   })
 
@@ -331,10 +332,10 @@ describe('mergeDeltas', () => {
     // Empty chart
     mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
 
-    // One delta file
+    // One delta file (v5 format with bucket)
     const delta = {
       ts: 1000,
-      day: '2026-02-21',
+      bucket: '2026-02-21-14',
       records: [
         { model_id: 'gpt-5', prompt_id: 'p1', output_hash: 'sha256:abc', user_id: 'user1' },
         { model_id: 'gpt-5', prompt_id: 'p2', output_hash: 'sha256:def', user_id: 'user1' },
@@ -354,9 +355,9 @@ describe('mergeDeltas', () => {
     expect(key).toBe('_aggregated/chart_data.json')
 
     const chart = JSON.parse(decoder.decode(body))
-    expect(chart.version).toBe(4)
-    expect(chart.data['2026-02-21']['gpt-5'].submissions).toBe(2)
-    expect(chart.data['2026-02-21']['gpt-5'].prompts_tested).toBe(2)
+    expect(chart.version).toBe(5)
+    expect(chart.data['2026-02-21-14']['gpt-5'].submissions).toBe(2)
+    expect(chart.data['2026-02-21-14']['gpt-5'].prompts_tested).toBe(2)
     expect(chart.models).toEqual(['gpt-5'])
     expect(chart._known_users).toEqual(['user1'])
     expect(chart.total_contributors).toBe(1)
@@ -368,10 +369,10 @@ describe('mergeDeltas', () => {
   })
 
   it('detects drift when hash changes', async () => {
-    // Existing chart with prev_hashes
+    // Existing chart with prev_hashes (v5 format)
     const existingChart = JSON.stringify({
-      version: 4,
-      data: { '2026-02-20': { 'gpt-5': { submissions: 1, prompts_tested: 1, unique_outputs: 1, drifted_prompts: 0 } } },
+      version: 5,
+      data: { '2026-02-20-10': { 'gpt-5': { submissions: 1, prompts_tested: 1, unique_outputs: 1, drifted_prompts: 0 } } },
       models: ['gpt-5'],
       total_submissions: 1,
       total_contributors: 1,
@@ -383,7 +384,7 @@ describe('mergeDeltas', () => {
     // Delta with changed hash for same prompt
     const delta = {
       ts: 2000,
-      day: '2026-02-21',
+      bucket: '2026-02-21-14',
       records: [
         { model_id: 'gpt-5', prompt_id: 'p1', output_hash: 'sha256:new', user_id: 'user1' },
       ],
@@ -396,7 +397,7 @@ describe('mergeDeltas', () => {
     await mergeDeltas(fakeBucket)
 
     const chart = JSON.parse(decoder.decode(mockUploadFile.mock.calls[0][2]))
-    expect(chart.data['2026-02-21']['gpt-5'].drifted_prompts).toBe(1)
+    expect(chart.data['2026-02-21-14']['gpt-5'].drifted_prompts).toBe(1)
     expect(chart._prev_hashes['gpt-5|p1']).toBe('sha256:new')
   })
 })

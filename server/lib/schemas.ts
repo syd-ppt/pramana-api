@@ -44,18 +44,21 @@ export interface StorageRecord {
   score: number | null;
 }
 
-/** Hash-based output consistency stats for a model on a given day */
-export interface ModelDayStats {
+/** Hash-based output consistency stats for a model in a given bucket */
+export interface ModelBucketStats {
   submissions: number;       // total submission records
   prompts_tested: number;    // unique prompt_ids
   unique_outputs: number;    // unique output_hashes across all prompts
-  drifted_prompts: number;   // prompts whose hash changed vs previous day
+  drifted_prompts: number;   // prompts whose hash changed vs previous bucket
 }
+
+/** @deprecated Use ModelBucketStats */
+export type ModelDayStats = ModelBucketStats;
 
 /** Aggregated chart data stored as _aggregated/chart_data.json */
 export interface ChartJson {
-  version: 4;
-  data: Record<string, Record<string, ModelDayStats>>;  // date → model → stats
+  version: 5;
+  data: Record<string, Record<string, ModelBucketStats>>;  // bucket (YYYY-MM-DD-HH) → model → stats
   models: string[];
   total_submissions: number;
   total_contributors: number;
@@ -75,7 +78,7 @@ export interface DeltaRecord {
 /** Delta file written to _deltas/{day}/{timestamp}_{random}.json */
 export interface ChartDelta {
   ts: number;         // Date.now()
-  day: string;        // "YYYY-MM-DD"
+  bucket: string;     // "YYYY-MM-DD-HH"
   records: DeltaRecord[];
 }
 

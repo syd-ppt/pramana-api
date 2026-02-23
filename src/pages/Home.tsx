@@ -5,6 +5,7 @@ import FilterPanel from '@/components/FilterPanel';
 import type { Filters } from '@/components/FilterPanel';
 import Button from '@/components/Button';
 import type { ChartDataPoint, ChartApiResponse } from '@/lib/types';
+import { aggregateByGranularity } from '@/lib/aggregate';
 
 const VIEW_OPTIONS: { value: ChartView; label: string }[] = [
   { value: 'consistency', label: 'Consistency' },
@@ -29,6 +30,7 @@ export default function Home() {
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     selectedModels: [],
+    granularity: '4h',
   });
 
   const [chartView, setChartView] = useState<ChartView>('consistency');
@@ -73,16 +75,18 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  const chartData = useMemo(() => {
-    return rawData.filter((d) => {
-      if (d.date < filters.startDate || d.date > filters.endDate) return false;
-      return true;
-    });
-  }, [rawData, filters.startDate, filters.endDate]);
-
   const displayModels = filters.selectedModels.length > 0
     ? filters.selectedModels
     : availableModels;
+
+  const chartData = useMemo(() => {
+    const filtered = rawData.filter((d) => {
+      // Slice bucket key to 10 chars (YYYY-MM-DD) for date comparison
+      const dateOnly = d.date.slice(0, 10);
+      return dateOnly >= filters.startDate && dateOnly <= filters.endDate;
+    });
+    return aggregateByGranularity(filtered, filters.granularity, displayModels);
+  }, [rawData, filters.startDate, filters.endDate, filters.granularity, displayModels]);
 
   // Weighted average consistency from latest data point
   const overallConsistency = useMemo(() => {

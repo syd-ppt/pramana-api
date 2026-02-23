@@ -25,6 +25,8 @@ export interface UserStatsResponse {
   last_submission: string | null;
 }
 
+export type Granularity = '1h' | '2h' | '4h' | '6h' | '8h' | '1d';
+
 export interface UserSummaryResponse {
   version: 3;
   submissions_by_date: Record<string, Record<string, number>>;

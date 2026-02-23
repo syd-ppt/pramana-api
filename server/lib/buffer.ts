@@ -23,7 +23,7 @@ import type {
   StorageRecord,
   ChartJson,
   UserSummaryJson,
-  ModelDayStats,
+  ModelBucketStats,
   ChartDelta,
   DeltaRecord,
 } from './schemas'
@@ -339,13 +339,22 @@ export async function readUserSummary(
 
 export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
   const { body } = await downloadFileWithEtag(bucket, CHART_KEY)
-  if (!body) return { version: 4, data: {}, models: [], total_submissions: 0, total_contributors: 0, last_updated: new Date().toISOString(), _prev_hashes: {}, _known_users: [] }
+  if (!body) return { version: 5, data: {}, models: [], total_submissions: 0, total_contributors: 0, last_updated: new Date().toISOString(), _prev_hashes: {}, _known_users: [] }
   const parsed = JSON.parse(decoder.decode(body))
-  // Migrate v3 → v4 on read
+  // Migrate v3/v4 fields
   if (!parsed._prev_hashes) parsed._prev_hashes = {}
   if (!parsed._known_users) parsed._known_users = []
   if (!parsed.last_updated) parsed.last_updated = new Date().toISOString()
-  parsed.version = 4
+  // Migrate v4 → v5: append -00 to daily keys (10-char YYYY-MM-DD)
+  if (parsed.version < 5) {
+    const migrated: Record<string, Record<string, ModelBucketStats>> = {}
+    for (const [key, val] of Object.entries(parsed.data)) {
+      const newKey = key.length === 10 ? `${key}-00` : key
+      migrated[newKey] = val as Record<string, ModelBucketStats>
+    }
+    parsed.data = migrated
+  }
+  parsed.version = 5
   return parsed as ChartJson
 }
 
@@ -363,13 +372,14 @@ export async function writeDelta(
 
   const now = new Date()
   const day = now.toISOString().split('T')[0]
+  const hourlyBucket = `${day}-${String(now.getUTCHours()).padStart(2, '0')}`
   const ts = now.getTime()
   const rand = Math.random().toString(36).slice(2, 8)
   const key = `${DELTAS_PREFIX}${day}/${ts}_${rand}.json`
 
   const delta: ChartDelta = {
     ts,
-    day,
+    bucket: hourlyBucket,
     records: records.map((r): DeltaRecord => ({
       model_id: r.model_id,
       prompt_id: r.prompt_id,
@@ -408,8 +418,9 @@ export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }>
   const knownUsers = new Set(chart._known_users)
 
   for (const delta of deltas) {
-    const day = delta.day
-    if (!chart.data[day]) chart.data[day] = {}
+    // Support both v5 (bucket) and v4 legacy (day) delta files
+    const bucketKey = (delta as ChartDelta).bucket || (delta as unknown as { day: string }).day + '-00'
+    if (!chart.data[bucketKey]) chart.data[bucketKey] = {}
 
     // Group delta records by model
     const byModel = new Map<string, DeltaRecord[]>()
@@ -421,14 +432,14 @@ export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }>
     }
 
     for (const [model, records] of byModel) {
-      const existing: ModelDayStats = chart.data[day][model] || {
+      const existing: ModelBucketStats = chart.data[bucketKey][model] || {
         submissions: 0,
         prompts_tested: 0,
         unique_outputs: 0,
         drifted_prompts: 0,
       }
 
-      // Track per-prompt hashes for this day+model to compute stats
+      // Track per-prompt hashes for this bucket+model to compute stats
       const promptHashes = new Map<string, Set<string>>()
       let newDrifted = 0
 
@@ -449,7 +460,7 @@ export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }>
       existing.prompts_tested += promptHashes.size  // new prompts in this delta
       existing.unique_outputs += Array.from(promptHashes.values()).reduce((sum, s) => sum + s.size, 0)
       existing.drifted_prompts += newDrifted
-      chart.data[day][model] = existing
+      chart.data[bucketKey][model] = existing
 
       chart.total_submissions += records.length
     }
@@ -501,20 +512,18 @@ async function loadAllRecords(bucket: R2Bucket): Promise<StorageRecord[]> {
 export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
   const allRecords = await loadAllRecords(bucket)
 
-  // 2. Sort by date
-  allRecords.sort((a, b) => {
-    if (a.year !== b.year) return a.year - b.year
-    if (a.month !== b.month) return a.month - b.month
-    return a.day - b.day
-  })
+  // 2. Sort by timestamp
+  allRecords.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
-  // 3. Group by (date, model)
+  // 3. Group by (bucket, model) — bucket = YYYY-MM-DD-HH
   const grouped = new Map<string, Map<string, StorageRecord[]>>()
   const modelSet = new Set<string>()
   for (const r of allRecords) {
     const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
-    if (!grouped.has(dateStr)) grouped.set(dateStr, new Map())
-    const dateMap = grouped.get(dateStr)!
+    const hour = r.timestamp.length >= 13 ? r.timestamp.slice(11, 13) : '00'
+    const bucketKey = `${dateStr}-${hour}`
+    if (!grouped.has(bucketKey)) grouped.set(bucketKey, new Map())
+    const dateMap = grouped.get(bucketKey)!
     if (!dateMap.has(r.model_id)) dateMap.set(r.model_id, [])
     dateMap.get(r.model_id)!.push(r)
     modelSet.add(r.model_id)
@@ -522,7 +531,7 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
 
   // 4. Compute stats with drift tracking
   const prevHashMap = new Map<string, string>() // `${model}|${prompt}` → last hash
-  const data: Record<string, Record<string, ModelDayStats>> = {}
+  const data: Record<string, Record<string, ModelBucketStats>> = {}
   let totalSubmissions = 0
   const userSet = new Set<string>()
 
@@ -567,14 +576,14 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     }
   }
 
-  // 5. Build v4 chart with _prev_hashes and _known_users
+  // 5. Build v5 chart with _prev_hashes and _known_users
   const prevHashes: Record<string, string> = {}
   for (const [k, v] of prevHashMap) prevHashes[k] = v
 
   const knownUsers = Array.from(userSet)
 
   const chart: ChartJson = {
-    version: 4,
+    version: 5,
     data,
     models: Array.from(modelSet).sort(),
     total_submissions: totalSubmissions,

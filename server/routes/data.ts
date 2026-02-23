@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { readChartJson } from '../lib/buffer'
-import type { ModelDayStats } from '../lib/schemas'
+import type { ModelBucketStats } from '../lib/schemas'
 
 type Env = { Bindings: { PRAMANA_DATA: R2Bucket } }
 
@@ -11,7 +11,7 @@ export const dataRoutes = new Hono<Env>().get('/chart', async (c) => {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, models]) => {
       const point: Record<string, string | number> = { date }
-      for (const [model, stats] of Object.entries(models) as [string, ModelDayStats][]) {
+      for (const [model, stats] of Object.entries(models) as [string, ModelBucketStats][]) {
         point[model] = stats.submissions
         point[`${model}_prompts`] = stats.prompts_tested
         point[`${model}_unique_outputs`] = stats.unique_outputs

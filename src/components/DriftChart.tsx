@@ -36,6 +36,7 @@ const GLOW_COLORS = [
 const pctFormatter = (v: number) => `${(v * 100).toFixed(0)}%`;
 const dateFormatter = (d: string) => {
   const parts = d.split('-');
+  if (parts.length >= 4) return `${parts[1]}/${parts[2]} ${parts[3]}:00`;
   return `${parts[1]}/${parts[2]}`;
 };
 
