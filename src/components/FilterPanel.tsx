@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Granularity } from '@/lib/types';
+import MultiSelect from '@/components/MultiSelect';
 
 interface FilterPanelProps {
   onFilterChange: (filters: Filters) => void;
@@ -53,27 +54,13 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
         </div>
 
         <div>
-          <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">
-            Models {filters.selectedModels.length === 0 && availableModels.length > 0 && (
-              <span className="text-[var(--text-muted)] font-normal">(showing all)</span>
-            )}
-          </label>
-          <select
-            multiple
-            value={filters.selectedModels}
-            onChange={(e) =>
-              updateFilters({
-                selectedModels: Array.from(e.target.selectedOptions, option => option.value),
-              })
-            }
-            className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent h-24 sm:h-20 transition-all"
-          >
-            {availableModels.map(model => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
+          <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">Models</label>
+          <MultiSelect
+            options={availableModels}
+            selected={filters.selectedModels}
+            onChange={(sel) => updateFilters({ selectedModels: sel })}
+            placeholder="All models"
+          />
         </div>
 
         <div>
