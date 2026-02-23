@@ -13,6 +13,7 @@ export interface ChartApiResponse {
   models: string[];
   total_submissions: number;
   total_contributors: number;
+  last_updated?: string;
 }
 
 export interface UserStatsResponse {

@@ -339,11 +339,12 @@ export async function readUserSummary(
 
 export async function readChartJson(bucket: R2Bucket): Promise<ChartJson> {
   const { body } = await downloadFileWithEtag(bucket, CHART_KEY)
-  if (!body) return { version: 4, data: {}, models: [], total_submissions: 0, total_contributors: 0, _prev_hashes: {}, _known_users: [] }
+  if (!body) return { version: 4, data: {}, models: [], total_submissions: 0, total_contributors: 0, last_updated: new Date().toISOString(), _prev_hashes: {}, _known_users: [] }
   const parsed = JSON.parse(decoder.decode(body))
   // Migrate v3 → v4 on read
   if (!parsed._prev_hashes) parsed._prev_hashes = {}
   if (!parsed._known_users) parsed._known_users = []
+  if (!parsed.last_updated) parsed.last_updated = new Date().toISOString()
   parsed.version = 4
   return parsed as ChartJson
 }
@@ -457,6 +458,7 @@ export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }>
   chart.models = Array.from(modelSet).sort()
   chart._known_users = Array.from(knownUsers)
   chart.total_contributors = knownUsers.size
+  chart.last_updated = new Date().toISOString()
 
   // 6. Write updated chart
   await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
@@ -577,6 +579,7 @@ export async function rebuildChartJson(bucket: R2Bucket): Promise<void> {
     models: Array.from(modelSet).sort(),
     total_submissions: totalSubmissions,
     total_contributors: knownUsers.length,
+    last_updated: new Date().toISOString(),
     _prev_hashes: prevHashes,
     _known_users: knownUsers,
   }

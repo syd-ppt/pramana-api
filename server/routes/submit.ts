@@ -64,6 +64,9 @@ export const submitRoutes = new Hono<Env>()
       updateUserSummary(bucket, userId, [record]),
     ])
 
+    // Write delta for incremental chart aggregation (merged by cron)
+    c.executionCtx.waitUntil(writeDelta(bucket, [record]))
+
     return c.json({
       status: 'accepted',
       id,

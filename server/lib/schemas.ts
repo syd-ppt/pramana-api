@@ -59,6 +59,7 @@ export interface ChartJson {
   models: string[];
   total_submissions: number;
   total_contributors: number;
+  last_updated: string;                    // ISO 8601 timestamp of last rebuild/merge
   _prev_hashes: Record<string, string>;   // "model|prompt" → last output_hash
   _known_users: string[];                  // deduplicated contributor list
 }

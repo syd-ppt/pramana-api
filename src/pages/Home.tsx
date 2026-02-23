@@ -36,6 +36,7 @@ export default function Home() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
   const [totalContributors, setTotalContributors] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +57,7 @@ export default function Home() {
         setRawData(json.data || []);
         setTotalSubmissions(json.total_submissions || 0);
         setTotalContributors(json.total_contributors || 0);
+        setLastUpdated(json.last_updated ?? null);
         if (json.models?.length > 0) setAvailableModels(json.models);
       } catch (err) {
         if (!cancelled) {
@@ -157,6 +159,11 @@ export default function Home() {
             {totalSubmissions > 0 && (
               <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-mono text-[var(--text-secondary)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
                 {totalSubmissions.toLocaleString()} submissions
+              </span>
+            )}
+            {lastUpdated && (
+              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-mono text-[var(--text-muted)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                updated {new Date(lastUpdated).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
           </div>

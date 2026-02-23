@@ -29,6 +29,7 @@ export const dataRoutes = new Hono<Env>().get('/chart', async (c) => {
       models: chart.models,
       total_submissions: chart.total_submissions,
       total_contributors: chart.total_contributors,
+      last_updated: chart.last_updated,
     },
     200,
     {
