@@ -192,7 +192,7 @@ export default function Home() {
               No eval submissions found. Start submitting results from the CLI:
             </p>
             <code className="block bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-4 py-2.5 rounded-lg font-mono text-sm border border-[var(--border-subtle)]">
-              uvx pramana run --tier cheap --model gpt-4
+              uvx --from 'git+https://github.com/syd-ppt/pramana.git' pramana run --tier cheap --model gpt-4o
             </code>
           </div>
         )}
@@ -280,7 +280,7 @@ export default function Home() {
           <p className="text-sm text-[var(--text-secondary)] mb-6">
             Run evals locally:{' '}
             <code className="bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-2.5 py-1 rounded-lg font-mono text-xs border border-[var(--border-subtle)]">
-              uvx pramana run --tier cheap --model gpt-5.2
+              uvx --from 'git+https://github.com/syd-ppt/pramana.git' pramana run --tier cheap --model gpt-4o
             </code>
           </p>
           <Button

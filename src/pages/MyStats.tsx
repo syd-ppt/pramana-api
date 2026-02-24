@@ -265,7 +265,7 @@ export default function MyStats() {
                 <p className="text-sm text-[var(--text-secondary)]">
                   Run{' '}
                   <code className="bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-1.5 py-0.5 rounded font-mono text-xs">
-                    uvx pramana run --tier cheap --model gpt-4
+                    uvx --from 'git+https://github.com/syd-ppt/pramana.git' pramana run --tier cheap --model gpt-4o
                   </code>{' '}
                   to start contributing.
                 </p>
