@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Crowdsourced LLM drift detection</strong><br>
-  <a href="https://pramana.pages.dev">Dashboard</a> &middot; <a href="https://github.com/syd-ppt/pramana">CLI</a>
+  <a href="https://pramana.pages.dev">Dashboard</a> &middot; <a href="https://syd-ppt.github.io/pramana/">Docs</a> &middot; <a href="https://github.com/syd-ppt/pramana">CLI</a>
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@ Pramana detects this. Users run standardized prompts against any model with the 
 ```
 You                          Pramana                         Dashboard
  |                              |                               |
- |  pramana run --model gpt-5   |                               |
+ |  pramana run --model gpt-4o   |                               |
  |  ............................ |                               |
  |  pramana submit results.json |                               |
  |----------------------------->|                               |
