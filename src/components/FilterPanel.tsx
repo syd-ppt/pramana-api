@@ -29,7 +29,7 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
   };
 
   return (
-    <div className="glass-elevated rounded-2xl p-5 mb-6">
+    <div className="glass-elevated rounded-2xl p-5 mb-6 overflow-visible">
       <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">Filters</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

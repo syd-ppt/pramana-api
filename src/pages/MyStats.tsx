@@ -170,7 +170,7 @@ export default function MyStats() {
           <>
             {/* Model filter */}
             {userModels.length > 1 && (
-              <div className="glass-elevated rounded-2xl p-5 mb-6">
+              <div className="glass-elevated rounded-2xl p-5 mb-6 overflow-visible">
                 <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">Filters</h3>
                 <div className="max-w-xs">
                   <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">Models</label>
