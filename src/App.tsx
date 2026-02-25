@@ -5,6 +5,7 @@ import Home from '@/pages/Home';
 import SignIn from '@/pages/SignIn';
 import CliToken from '@/pages/CliToken';
 import MyStats from '@/pages/MyStats';
+import About from '@/pages/About';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/auth/signin" element={<SignIn />} />
           <Route path="/cli-token" element={<CliToken />} />
           <Route path="/my-stats" element={<MyStats />} />
+          <Route path="/about" element={<About />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

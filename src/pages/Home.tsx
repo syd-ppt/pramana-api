@@ -283,13 +283,18 @@ export default function Home() {
               uvx --from 'git+https://github.com/syd-ppt/pramana.git' pramana run --tier cheap --model gpt-4o
             </code>
           </p>
-          <Button
-            href="https://github.com/syd-ppt/pramana"
-            variant="secondary"
-            size="md"
-          >
-            View on GitHub
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button href="/about" variant="secondary" size="md">
+              Learn More
+            </Button>
+            <Button
+              href="https://github.com/syd-ppt/pramana"
+              variant="ghost"
+              size="md"
+            >
+              View on GitHub
+            </Button>
+          </div>
         </div>
       </div>
     </main>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — Pramana</title>
+  <meta name="description" content="Crowdsourced LLM drift detection via hash-based output consistency tracking.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <button class="nav-toggle" onclick="document.querySelector('nav').classList.toggle('open')">&#9776;</button>
+  <div class="layout">
+    <nav>
+      <div class="logo">
+        <a href="https://syd-ppt.github.io/pramana/">pramana</a>
+        <span class="sanskrit">प्रमाण</span>
+      </div>
+      <ul>
+        <li class="nav-section">Project</li>
+        <li><a href="about.html" class="active">About</a></li>
+        <li class="nav-section">CLI</li>
+        <li><a href="https://syd-ppt.github.io/pramana/">Overview</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/quickstart.html">Quick Start</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/cli.html">CLI Reference</a></li>
+        <li class="nav-section">API &amp; Dashboard</li>
+        <li><a href="index.html">Overview</a></li>
+        <li><a href="getting-started.html">Getting Started</a></li>
+        <li><a href="api.html">API Reference</a></li>
+        <li><a href="methodology.html">Methodology</a></li>
+        <li class="nav-section">Internals</li>
+        <li><a href="https://syd-ppt.github.io/pramana/architecture.html">Architecture</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/providers.html">Providers</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/suites.html">Test Suites</a></li>
+        <li><a href="https://syd-ppt.github.io/pramana/reproducibility.html">Reproducibility</a></li>
+        <li class="nav-section">Community</li>
+        <li><a href="https://syd-ppt.github.io/pramana/contributing.html">Contributing</a></li>
+      </ul>
+      <div class="ext-links">
+        <a href="https://github.com/syd-ppt/pramana">GitHub (CLI)</a>
+        <a href="https://github.com/syd-ppt/pramana-api">GitHub (API)</a>
+        <a href="https://pramana.pages.dev">Dashboard</a>
+      </div>
+    </nav>
+    <main>
+      <h1>About Pramana</h1>
+      <p class="page-desc">Crowdsourced LLM drift detection via hash-based output consistency tracking.</p>
+
+      <h2>How It Works</h2>
+      <ol>
+        <li>Run <code>pramana run --tier cheap --model gpt-4o</code>. This sends 10 predefined prompts to the model with deterministic parameters (<code>temperature=0</code>, <code>seed=42</code>).</li>
+        <li>Each response is checked against assertions — <strong>exact_match</strong>, <strong>contains</strong>, <strong>contains_any</strong>, <strong>is_json</strong> — across 6 categories: reasoning, factual, instruction-following, coding, safety, creative.</li>
+        <li>Each output is hashed for drift detection. Same prompt + same model + same hash = no change.</li>
+        <li>Submit results to the shared API. The backend appends records, runs daily aggregation, and serves the dashboard at <a href="https://pramana.pages.dev">pramana.pages.dev</a>.</li>
+        <li>Three tiers — <strong>cheap</strong> (10), <strong>moderate</strong> (25), <strong>comprehensive</strong> (75) — cover the same 6 categories at different density.</li>
+      </ol>
+
+      <h2>Hash Formula</h2>
+      <div class="formula">
+        output_hash = SHA-256(model_id + "|" + prompt_id + "|" + output)
+      </div>
+      <p>Content-addressable versioning via SHA-256 ensures everyone runs the same suite version. Only hashes and aggregate counts are stored — not raw outputs.</p>
+
+      <h2>Detection Signals</h2>
+
+      <div class="callout">
+        <strong>Pass rate changes.</strong> If a prompt that used to pass now fails, the model's behavior degraded on that task.
+      </div>
+
+      <div class="callout">
+        <strong>Hash changes.</strong> If the output hash changes even though parameters are identical, the model produced different output — catching changes that assertions alone might miss.
+      </div>
+
+      <h2>Limitations</h2>
+
+      <div class="callout warn">
+        <ul>
+          <li><strong>Provider-dependent reproducibility.</strong> OpenAI respects temperature=0 + seed. Anthropic does not — even at temperature=0, outputs are non-deterministic. Hash-based detection is most reliable against OpenAI.</li>
+          <li><strong>Value scales with contributors.</strong> One user's data shows their own history. Multiple independent submitters let you distinguish "my environment changed" from "the model changed for everyone."</li>
+          <li><strong>Hash catches any change.</strong> Including benign ones (formatting, whitespace). It tells you <em>that</em> something changed, not <em>whether</em> it matters.</li>
+        </ul>
+      </div>
+
+      <h2>Architecture</h2>
+      <ul>
+        <li><strong>Stateless API</strong> — no database, no connection pools. CSV + JSON on R2.</li>
+        <li><strong>Append-only storage</strong> — immutable results. No edits, no deletes.</li>
+        <li><strong>Privacy-preserving</strong> — only hashes and aggregate counts stored, not raw outputs.</li>
+        <li><strong>Zero cost</strong> — Cloudflare Pages free tier + R2 free tier = $0/month.</li>
+      </ul>
+    </main>
+  </div>
+</body>
+</html>

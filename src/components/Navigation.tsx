@@ -49,6 +49,12 @@ export default function Navigation() {
               Pramana
             </Link>
             <ThemeToggle />
+            <Link
+              to="/about"
+              className="text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] px-2 py-1.5 rounded-lg hover:bg-[var(--hover-overlay)] transition-all"
+            >
+              About
+            </Link>
             <a
               href="https://syd-ppt.github.io/pramana-api/"
               target="_blank"
