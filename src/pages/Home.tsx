@@ -4,6 +4,7 @@ import type { ChartView } from '@/components/DriftChart';
 import FilterPanel from '@/components/FilterPanel';
 import type { Filters } from '@/components/FilterPanel';
 import Button from '@/components/Button';
+import CopyButton from '@/components/CopyButton';
 import type { ChartDataPoint, ChartApiResponse } from '@/lib/types';
 import { aggregateByGranularity } from '@/lib/aggregate';
 
@@ -191,9 +192,12 @@ export default function Home() {
             <p className="text-[var(--text-secondary)] text-sm mb-3">
               No eval submissions found. Start submitting results from the CLI:
             </p>
-            <code className="block bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-4 py-2.5 rounded-lg font-mono text-sm border border-[var(--border-subtle)]">
-              uvx pramana-ai run --tier cheap --model gpt-4o
-            </code>
+            <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)]">
+              <code className="flex-1 text-[var(--accent-cyan)] px-4 py-2.5 font-mono text-sm overflow-x-auto">
+                uvx pramana-ai run --tier cheap --model gpt-4o
+              </code>
+              <CopyButton text="uvx pramana-ai run --tier cheap --model gpt-4o" compact />
+            </span>
           </div>
         )}
 
@@ -277,12 +281,13 @@ export default function Home() {
             Pramana detects LLM drift through crowdsourced output consistency tracking.
             Same prompt + same model + different output = drift detected.
           </p>
-          <p className="text-sm text-[var(--text-secondary)] mb-6">
-            Run evals locally:{' '}
-            <code className="bg-[var(--bg-surface)] text-[var(--accent-cyan)] px-2.5 py-1 rounded-lg font-mono text-xs border border-[var(--border-subtle)]">
+          <p className="text-sm text-[var(--text-secondary)] mb-2">Run evals locally:</p>
+          <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)] mb-6">
+            <code className="flex-1 text-[var(--accent-cyan)] px-4 py-2.5 font-mono text-xs overflow-x-auto">
               uvx pramana-ai run --tier cheap --model gpt-4o
             </code>
-          </p>
+            <CopyButton text="uvx pramana-ai run --tier cheap --model gpt-4o" compact />
+          </span>
           <div className="flex flex-wrap gap-3">
             <Button href="/about" variant="secondary" size="md">
               Learn More
