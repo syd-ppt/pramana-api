@@ -55,7 +55,7 @@
       <p>This is the server-side half of Pramana. It receives eval submissions from the <a href="https://syd-ppt.github.io/pramana/">CLI</a>, stores them in R2, aggregates statistics, and serves a drift detection dashboard.</p>
 
       <h2>The Problem</h2>
-      <p>LLM behavior changes silently. Provider updates, quantization changes, and infrastructure migrations alter model outputs without notice. Chen et al. (2023) documented this empirically: GPT-4's accuracy on identifying prime numbers dropped from 97.6% to 2.4% between March and June 2023. <a href="https://arxiv.org/abs/2307.09009">How Is ChatGPT's Behavior Changing over Time?</a> (Stanford/Berkeley).</p>
+      <p>LLM behavior changes silently. Provider updates, quantization changes, and infrastructure migrations alter model outputs without notice. Chen et al. (2023) documented significant accuracy drops in GPT-4 over a three-month period. <a href="https://arxiv.org/abs/2307.09009">How Is ChatGPT's Behavior Changing over Time?</a> (Stanford/Berkeley).</p>
 
       <h2>Architecture</h2>
       <div class="diagram">┌──────────┐    POST /api/submit    ┌──────────────┐    R2    ┌─────────────┐
