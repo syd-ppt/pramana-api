@@ -192,7 +192,7 @@ export default function Home() {
             <p className="text-[var(--text-secondary)] text-sm mb-3">
               No eval submissions found. Start submitting results from the CLI:
             </p>
-            <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)]">
+            <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)] pr-2">
               <code className="flex-1 text-[var(--accent-cyan)] px-4 py-2.5 font-mono text-sm overflow-x-auto">
                 uvx pramana-ai run --tier cheap --model gpt-4o
               </code>
@@ -282,7 +282,7 @@ export default function Home() {
             Same prompt + same model + different output = drift detected.
           </p>
           <p className="text-sm text-[var(--text-secondary)] mb-2">Run evals locally:</p>
-          <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)] mb-6">
+          <span className="flex items-center gap-2 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-subtle)] pr-2 mb-6">
             <code className="flex-1 text-[var(--accent-cyan)] px-4 py-2.5 font-mono text-xs overflow-x-auto">
               uvx pramana-ai run --tier cheap --model gpt-4o
             </code>
