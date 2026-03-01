@@ -156,11 +156,11 @@ export default function Home() {
                 {displayModels.length} models
               </span>
             )}
-            {totalContributors > 0 && (
+            {/* {totalContributors > 0 && (
               <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-mono text-[var(--text-secondary)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
                 {totalContributors.toLocaleString()} contributors
               </span>
-            )}
+            )} */}
             {totalSubmissions > 0 && (
               <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-mono text-[var(--text-secondary)] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
                 {totalSubmissions.toLocaleString()} submissions
