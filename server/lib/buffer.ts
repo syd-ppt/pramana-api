@@ -395,15 +395,20 @@ export async function writeDelta(
  * Merge delta files into existing chart_data.json.
  * O(deltas) R2 ops — does NOT read archives.
  */
+// Workers free tier: 50 subrequests per invocation.
+// compactBuffer uses ~8 fixed R2 calls; cap deltas to stay under limit.
+const MAX_DELTAS_PER_RUN = 40
+
 export async function mergeDeltas(bucket: R2Bucket): Promise<{ merged: number }> {
   // 1. Read current chart
   const chart = await readChartJson(bucket)
 
-  // 2. List all delta files
-  const deltaKeys = await listFiles(bucket, DELTAS_PREFIX)
-  if (deltaKeys.length === 0) return { merged: 0 }
+  // 2. List delta files (cap to avoid exceeding subrequest limit)
+  const allDeltaKeys = await listFiles(bucket, DELTAS_PREFIX)
+  if (allDeltaKeys.length === 0) return { merged: 0 }
+  const deltaKeys = allDeltaKeys.slice(0, MAX_DELTAS_PER_RUN)
 
-  // 3. Read and parse all deltas
+  // 3. Read and parse deltas (remaining picked up on next run)
   const deltas: ChartDelta[] = []
   for (const key of deltaKeys) {
     const buf = await downloadFile(bucket, key)
