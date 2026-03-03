@@ -16,15 +16,27 @@ export const adminRoutes = new Hono<Env>()
     const denied = requireCronAuth(c)
     if (denied) return denied
 
-    const result = await compactBuffer(c.env.PRAMANA_DATA)
-    return c.json({ status: 'completed', ...result })
+    try {
+      const result = await compactBuffer(c.env.PRAMANA_DATA)
+      return c.json({ status: 'completed', ...result })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error ? err.stack : undefined
+      return c.json({ status: 'error', error: message, stack }, 500)
+    }
   })
   .post('/rebuild', async (c) => {
     const denied = requireCronAuth(c)
     if (denied) return denied
 
-    const bucket = c.env.PRAMANA_DATA
-    await rebuildChartJson(bucket)
-    const userResult = await rebuildUserSummaries(bucket)
-    return c.json({ status: 'completed', rebuilt: true, ...userResult })
+    try {
+      const bucket = c.env.PRAMANA_DATA
+      await rebuildChartJson(bucket)
+      const userResult = await rebuildUserSummaries(bucket)
+      return c.json({ status: 'completed', rebuilt: true, ...userResult })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error ? err.stack : undefined
+      return c.json({ status: 'error', error: message, stack }, 500)
+    }
   })
