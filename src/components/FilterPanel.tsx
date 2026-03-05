@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Granularity } from '@/lib/types';
 import MultiSelect from '@/components/MultiSelect';
+import GranularitySelect from '@/components/GranularitySelect';
 
 interface FilterPanelProps {
   onFilterChange: (filters: Filters) => void;
@@ -65,18 +66,10 @@ export default function FilterPanel({ onFilterChange, availableModels }: FilterP
 
         <div>
           <label className="block text-xs font-medium mb-1.5 text-[var(--text-secondary)]">Granularity</label>
-          <select
+          <GranularitySelect
             value={filters.granularity}
-            onChange={(e) => updateFilters({ granularity: e.target.value as Granularity })}
-            className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent transition-all"
-          >
-            <option value="1h">1 hour</option>
-            <option value="2h">2 hours</option>
-            <option value="4h">4 hours</option>
-            <option value="6h">6 hours</option>
-            <option value="8h">8 hours</option>
-            <option value="1d">1 day</option>
-          </select>
+            onChange={(val) => updateFilters({ granularity: val })}
+          />
         </div>
       </div>
     </div>

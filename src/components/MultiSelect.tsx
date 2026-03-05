@@ -36,6 +36,21 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
       ? placeholder
       : `${selected.length} selected`;
 
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
+
+  const toggleDropdown = () => {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+    setOpen(!open);
+  };
+
   function toggle(value: string) {
     const next = selected.includes(value)
       ? selected.filter(v => v !== value)
@@ -50,8 +65,9 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
   return (
     <div ref={ref} className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={toggleDropdown}
         className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[var(--text-primary)] text-sm font-mono text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)] focus:border-transparent transition-all flex items-center justify-between"
       >
         <span className={selected.length === 0 ? 'text-[var(--text-muted)]' : ''}>{label}</span>
@@ -61,7 +77,7 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+        <div className="fixed z-50 glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px`, width: `${dropdownPos.width}px`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
           <div className="px-2 py-1.5">
             <input
               ref={inputRef}

@@ -62,10 +62,8 @@ export const submitRoutes = new Hono<Env>()
     const [, summary] = await Promise.all([
       appendToCsvBuffer(bucket, [record]),
       updateUserSummary(bucket, userId, [record]),
+      writeDelta(bucket, [record]),
     ])
-
-    // Write delta for incremental chart aggregation (merged by cron)
-    c.executionCtx.waitUntil(writeDelta(bucket, [record]))
 
     return c.json({
       status: 'accepted',
@@ -118,10 +116,8 @@ export const submitRoutes = new Hono<Env>()
     await Promise.all([
       appendToCsvBuffer(bucket, records),
       updateUserSummary(bucket, userId, records),
+      writeDelta(bucket, records),
     ])
-
-    // Write delta for incremental chart aggregation (merged by cron)
-    c.executionCtx.waitUntil(writeDelta(bucket, records))
 
     return c.json({
       status: 'completed',
