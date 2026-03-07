@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface MultiSelectProps {
   options: string[];
@@ -13,9 +14,13 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -76,8 +81,8 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
         </svg>
       </button>
 
-      {open && (
-        <div className="fixed z-50 glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px`, width: `${dropdownPos.width}px`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+      {open && createPortal(
+        <div ref={dropdownRef} className="fixed z-50 glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px`, width: `${dropdownPos.width}px`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
           <div className="px-2 py-1.5">
             <input
               ref={inputRef}
@@ -115,7 +120,8 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
             );
           })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

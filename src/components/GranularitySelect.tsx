@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Granularity } from '@/lib/types';
 
 interface GranularitySelectProps {
@@ -21,9 +22,13 @@ export default function GranularitySelect({ value, onChange }: GranularitySelect
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -57,8 +62,8 @@ export default function GranularitySelect({ value, onChange }: GranularitySelect
         </svg>
       </button>
 
-      {open && (
-        <div className="fixed z-50 glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px`, width: `${dropdownPos.width}px`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+      {open && createPortal(
+        <div ref={dropdownRef} className="fixed z-50 glass-elevated rounded-lg border border-[var(--border-glass)] py-1" style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px`, width: `${dropdownPos.width}px`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
           {GRANULARITY_OPTIONS.map(opt => (
             <button
               key={opt.value}
@@ -76,7 +81,8 @@ export default function GranularitySelect({ value, onChange }: GranularitySelect
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
