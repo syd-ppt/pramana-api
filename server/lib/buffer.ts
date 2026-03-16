@@ -17,6 +17,7 @@ import {
   uploadFileConditional,
   listFiles,
   downloadFile,
+  deleteFile,
   deleteFiles,
 } from './storage'
 import type {
@@ -191,42 +192,26 @@ function parseCsvBody(csv: string): StorageRecord[] {
 // -- Buffer operations --
 
 const MAX_RETRIES = 3
+const BUFFER_ENTRIES_PREFIX = '_buffer/entries/'
 
-export async function appendToCsvBuffer(
+/**
+ * Write records as an individual entry file — O(1) R2 PUT, no reads.
+ * Replaces appendToCsvBuffer which did O(n) decompress-append-recompress
+ * and caused 503s when the buffer grew between compact runs.
+ */
+export async function writeBufferEntry(
   bucket: R2Bucket,
   records: StorageRecord[]
 ): Promise<void> {
   if (records.length === 0) return
 
-  const newRows = records.map(recordToCsvRow).join('\n')
+  const ts = Date.now()
+  const rand = Math.random().toString(36).slice(2, 8)
+  const key = `${BUFFER_ENTRIES_PREFIX}${ts}_${rand}.csv.gz`
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const { body, etag } = await downloadFileWithEtag(bucket, BUFFER_KEY)
-
-    let csv: string
-    if (body) {
-      csv = decoder.decode(await gunzip(body))
-      csv = csv.trimEnd() + '\n' + newRows
-    } else {
-      csv = CSV_HEADERS + '\n' + newRows
-    }
-
-    const compressed = await gzip(encoder.encode(csv))
-
-    try {
-      if (etag) {
-        await uploadFileConditional(bucket, BUFFER_KEY, compressed, etag)
-      } else {
-        await uploadFile(bucket, BUFFER_KEY, compressed)
-      }
-      return
-    } catch (err: unknown) {
-      // R2 returns 412 on etag mismatch
-      const status = (err as { status?: number }).status
-      if (status === 412 && attempt < MAX_RETRIES - 1) continue
-      throw err
-    }
-  }
+  const csv = CSV_HEADERS + '\n' + records.map(recordToCsvRow).join('\n')
+  const compressed = await gzip(encoder.encode(csv))
+  await uploadFile(bucket, key, compressed)
 }
 
 // -- Per-user summary --
@@ -499,6 +484,15 @@ async function loadAllRecords(bucket: R2Bucket): Promise<StorageRecord[]> {
     allRecords.push(...parseCsvBody(csv))
   }
 
+  // Read individual buffer entries
+  const entryKeys = await listFiles(bucket, BUFFER_ENTRIES_PREFIX)
+  for (const key of entryKeys) {
+    const buf = await downloadFile(bucket, key)
+    const csv = decoder.decode(await gunzip(buf))
+    allRecords.push(...parseCsvBody(csv))
+  }
+
+  // Legacy monolithic buffer (if it still exists)
   const { body: bufferBody } = await downloadFileWithEtag(bucket, BUFFER_KEY)
   if (bufferBody) {
     const bufferCsv = decoder.decode(await gunzip(bufferBody))
@@ -656,13 +650,20 @@ export async function rebuildUserSummaries(bucket: R2Bucket): Promise<{ users: n
 export async function compactBuffer(
   bucket: R2Bucket
 ): Promise<{ archived: number; deltasMerged: number }> {
-  // 1. Archive buffer
-  const { body } = await downloadFileWithEtag(bucket, BUFFER_KEY)
+  // 1. Collect individual buffer entries
+  const entryKeys = await listFiles(bucket, BUFFER_ENTRIES_PREFIX)
   let archived = 0
-  if (body) {
-    const csv = decoder.decode(await gunzip(body))
-    const records = parseCsvBody(csv)
-    if (records.length > 0) {
+
+  if (entryKeys.length > 0) {
+    // Read all entry files and collect records
+    const allRecords: StorageRecord[] = []
+    for (const key of entryKeys) {
+      const buf = await downloadFile(bucket, key)
+      const csv = decoder.decode(await gunzip(buf))
+      allRecords.push(...parseCsvBody(csv))
+    }
+
+    if (allRecords.length > 0) {
       const today = new Date().toISOString().split('T')[0]
       const archiveKey = `${ARCHIVE_PREFIX}${today}.csv.gz`
 
@@ -670,14 +671,40 @@ export async function compactBuffer(
       let archiveCsv: string
       if (existingArchive) {
         const existing = decoder.decode(await gunzip(existingArchive))
-        archiveCsv = existing.trimEnd() + '\n' + records.map(recordToCsvRow).join('\n')
+        archiveCsv = existing.trimEnd() + '\n' + allRecords.map(recordToCsvRow).join('\n')
       } else {
-        archiveCsv = CSV_HEADERS + '\n' + records.map(recordToCsvRow).join('\n')
+        archiveCsv = CSV_HEADERS + '\n' + allRecords.map(recordToCsvRow).join('\n')
       }
       await uploadFile(bucket, archiveKey, await gzip(encoder.encode(archiveCsv)))
-      await uploadFile(bucket, BUFFER_KEY, await gzip(encoder.encode(CSV_HEADERS + '\n')))
-      archived = records.length
+      archived = allRecords.length
     }
+
+    // Delete processed entries
+    await deleteFiles(bucket, entryKeys)
+  }
+
+  // 1b. Also drain legacy monolithic buffer if it exists
+  const { body } = await downloadFileWithEtag(bucket, BUFFER_KEY)
+  if (body) {
+    const csv = decoder.decode(await gunzip(body))
+    const legacyRecords = parseCsvBody(csv)
+    if (legacyRecords.length > 0) {
+      const today = new Date().toISOString().split('T')[0]
+      const archiveKey = `${ARCHIVE_PREFIX}${today}.csv.gz`
+
+      const { body: existingArchive } = await downloadFileWithEtag(bucket, archiveKey)
+      let archiveCsv: string
+      if (existingArchive) {
+        const existing = decoder.decode(await gunzip(existingArchive))
+        archiveCsv = existing.trimEnd() + '\n' + legacyRecords.map(recordToCsvRow).join('\n')
+      } else {
+        archiveCsv = CSV_HEADERS + '\n' + legacyRecords.map(recordToCsvRow).join('\n')
+      }
+      await uploadFile(bucket, archiveKey, await gzip(encoder.encode(archiveCsv)))
+      archived += legacyRecords.length
+    }
+    // Delete legacy buffer
+    await deleteFile(bucket, BUFFER_KEY)
   }
 
   // 2. Merge deltas into chart (O(deltas), not O(archives))
@@ -692,22 +719,45 @@ export async function deleteUserFromBuffer(
   bucket: R2Bucket,
   userId: string
 ): Promise<number> {
-  const { body, etag } = await downloadFileWithEtag(bucket, BUFFER_KEY)
-  if (!body) return 0
+  let removed = 0
 
-  const csv = decoder.decode(await gunzip(body))
-  const allRecords = parseCsvBody(csv)
-  const filtered = allRecords.filter((r) => r.user_id !== userId)
-  const removed = allRecords.length - filtered.length
-
-  if (removed > 0) {
-    const newCsv = CSV_HEADERS + '\n' + filtered.map(recordToCsvRow).join('\n')
-    const compressed = await gzip(encoder.encode(newCsv))
-    if (etag) {
-      await uploadFileConditional(bucket, BUFFER_KEY, compressed, etag)
-    } else {
-      await uploadFile(bucket, BUFFER_KEY, compressed)
+  // Process individual buffer entries
+  const entryKeys = await listFiles(bucket, BUFFER_ENTRIES_PREFIX)
+  for (const key of entryKeys) {
+    const buf = await downloadFile(bucket, key)
+    const csv = decoder.decode(await gunzip(buf))
+    const records = parseCsvBody(csv)
+    const filtered = records.filter((r) => r.user_id !== userId)
+    const diff = records.length - filtered.length
+    if (diff > 0) {
+      removed += diff
+      if (filtered.length > 0) {
+        const newCsv = CSV_HEADERS + '\n' + filtered.map(recordToCsvRow).join('\n')
+        await uploadFile(bucket, key, await gzip(encoder.encode(newCsv)))
+      } else {
+        await deleteFile(bucket, key)
+      }
     }
   }
+
+  // Legacy monolithic buffer
+  const { body, etag } = await downloadFileWithEtag(bucket, BUFFER_KEY)
+  if (body) {
+    const csv = decoder.decode(await gunzip(body))
+    const allRecords = parseCsvBody(csv)
+    const filtered = allRecords.filter((r) => r.user_id !== userId)
+    const diff = allRecords.length - filtered.length
+    if (diff > 0) {
+      removed += diff
+      const newCsv = CSV_HEADERS + '\n' + filtered.map(recordToCsvRow).join('\n')
+      const compressed = await gzip(encoder.encode(newCsv))
+      if (etag) {
+        await uploadFileConditional(bucket, BUFFER_KEY, compressed, etag)
+      } else {
+        await uploadFile(bucket, BUFFER_KEY, compressed)
+      }
+    }
+  }
+
   return removed
 }

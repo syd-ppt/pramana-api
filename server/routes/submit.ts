@@ -8,7 +8,7 @@ import {
   BatchSubmissionRequestSchema,
   type StorageRecord,
 } from '../lib/schemas'
-import { appendToCsvBuffer, updateUserSummary, writeDelta } from '../lib/buffer'
+import { writeBufferEntry, updateUserSummary, writeDelta } from '../lib/buffer'
 
 type Env = {
   Bindings: { PRAMANA_DATA: R2Bucket; JWT_SECRET: string }
@@ -60,7 +60,7 @@ export const submitRoutes = new Hono<Env>()
 
     const bucket = c.env.PRAMANA_DATA
     const [, summary] = await Promise.all([
-      appendToCsvBuffer(bucket, [record]),
+      writeBufferEntry(bucket, [record]),
       updateUserSummary(bucket, userId, [record]),
       writeDelta(bucket, [record]),
     ])
@@ -114,7 +114,7 @@ export const submitRoutes = new Hono<Env>()
 
     const bucket = c.env.PRAMANA_DATA
     await Promise.all([
-      appendToCsvBuffer(bucket, records),
+      writeBufferEntry(bucket, records),
       updateUserSummary(bucket, userId, records),
       writeDelta(bucket, records),
     ])

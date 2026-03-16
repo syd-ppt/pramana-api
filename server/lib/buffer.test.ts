@@ -9,10 +9,11 @@ vi.mock('./storage', () => ({
   listFiles: vi.fn(),
   downloadFile: vi.fn(),
   deleteFiles: vi.fn(),
+  deleteFile: vi.fn(),
 }))
 
 import {
-  appendToCsvBuffer,
+  writeBufferEntry,
   updateUserSummary,
   readChartJson,
   writeDelta,
@@ -26,6 +27,7 @@ import {
   listFiles,
   downloadFile,
   deleteFiles,
+  deleteFile,
 } from './storage'
 
 const mockDownloadFileWithEtag = vi.mocked(downloadFileWithEtag)
@@ -34,6 +36,7 @@ const mockUploadFileConditional = vi.mocked(uploadFileConditional)
 const mockListFiles = vi.mocked(listFiles)
 const mockDownloadFile = vi.mocked(downloadFile)
 const mockDeleteFiles = vi.mocked(deleteFiles)
+const mockDeleteFile = vi.mocked(deleteFile)
 
 // Compression helpers using Web APIs (matching what buffer.ts uses)
 async function gzip(data: Uint8Array): Promise<Uint8Array> {
@@ -80,71 +83,30 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('appendToCsvBuffer', () => {
-  it('creates buffer with headers when none exists', async () => {
-    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+describe('writeBufferEntry', () => {
+  it('writes a gzipped CSV entry file with headers', async () => {
     mockUploadFile.mockResolvedValue(undefined)
 
-    await appendToCsvBuffer(fakeBucket, [makeRecord()])
+    await writeBufferEntry(fakeBucket, [makeRecord()])
 
     expect(mockUploadFile).toHaveBeenCalledTimes(1)
-    const [, , body] = mockUploadFile.mock.calls[0]
+    const [, key, body] = mockUploadFile.mock.calls[0]
+    expect(key).toMatch(/^_buffer\/entries\/\d+_[a-z0-9]+\.csv\.gz$/)
     const csv = decoder.decode(await gunzip(body))
     expect(csv).toContain('id,timestamp,user_id')
     expect(csv).toContain('00000000-0000-4000-8000-000000000001')
     expect(csv).toContain('gpt-5')
   })
 
-  it('appends to existing buffer with conditional PUT', async () => {
-    const existingCsv =
-      'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day\n' +
-      'old-id,2026-02-20T00:00:00Z,user1,gpt-4,p1,old output,sha256:xyz,{},2026,2,20'
-    const compressed = await gzip(encoder.encode(existingCsv))
-
-    mockDownloadFileWithEtag.mockResolvedValue({
-      body: compressed,
-      etag: '"etag123"',
-    })
-    mockUploadFileConditional.mockResolvedValue(undefined)
-
-    await appendToCsvBuffer(fakeBucket, [makeRecord()])
-
-    expect(mockUploadFileConditional).toHaveBeenCalledTimes(1)
-    const [, , body, etag] = mockUploadFileConditional.mock.calls[0]
-    expect(etag).toBe('"etag123"')
-
-    const csv = decoder.decode(await gunzip(body))
-    expect(csv).toContain('old-id')
-    expect(csv).toContain('00000000-0000-4000-8000-000000000001')
-  })
-
-  it('retries on 412 PreconditionFailed', async () => {
-    const csv =
-      'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day\n'
-    const compressed = await gzip(encoder.encode(csv))
-
-    mockDownloadFileWithEtag.mockResolvedValue({
-      body: compressed,
-      etag: '"etag1"',
-    })
-
-    const error412 = new Error('PreconditionFailed') as Error & { status: number }
-    error412.status = 412
-    mockUploadFileConditional
-      .mockRejectedValueOnce(error412)
-      .mockResolvedValueOnce(undefined)
-
-    await appendToCsvBuffer(fakeBucket, [makeRecord()])
-
-    expect(mockDownloadFileWithEtag).toHaveBeenCalledTimes(2)
-    expect(mockUploadFileConditional).toHaveBeenCalledTimes(2)
+  it('skips when no records', async () => {
+    await writeBufferEntry(fakeBucket, [])
+    expect(mockUploadFile).not.toHaveBeenCalled()
   })
 
   it('escapes CSV fields with commas and quotes', async () => {
-    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     mockUploadFile.mockResolvedValue(undefined)
 
-    await appendToCsvBuffer(fakeBucket, [
+    await writeBufferEntry(fakeBucket, [
       makeRecord({ output: 'has "quotes" and, commas' }),
     ])
 
@@ -406,11 +368,10 @@ describe('CSV parsing (RFC 4180)', () => {
   it('parses multi-line quoted output fields correctly', async () => {
     // This was the root cause of the garbage model names bug:
     // parseCsvBody split on \n before parsing quotes, breaking multi-line outputs
-    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
     mockUploadFile.mockResolvedValue(undefined)
 
     const multiLineOutput = 'line 1\nline 2, with comma\nline 3 "quoted"'
-    await appendToCsvBuffer(fakeBucket, [makeRecord({ output: multiLineOutput })])
+    await writeBufferEntry(fakeBucket, [makeRecord({ output: multiLineOutput })])
 
     // Read back the written CSV and verify it round-trips correctly
     const [, , body] = mockUploadFile.mock.calls[0]
@@ -420,8 +381,9 @@ describe('CSV parsing (RFC 4180)', () => {
     // Now simulate reading it back via a compaction-like path:
     // feed the CSV through the same compression pipeline
     const recompressed = await gzip(encoder.encode(csv))
-    mockDownloadFileWithEtag.mockResolvedValue({ body: recompressed, etag: '"e1"' })
-    mockUploadFileConditional.mockResolvedValue(undefined)
+    mockListFiles.mockResolvedValue(['_buffer/entries/123_abc.csv.gz'])
+    mockDownloadFile.mockResolvedValue(recompressed)
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
 
     // deleteUserFromBuffer uses parseCsvBody internally — use it as a round-trip test
     const removed = await deleteUserFromBuffer(fakeBucket, 'nonexistent-user')
@@ -437,22 +399,21 @@ describe('CSV parsing (RFC 4180)', () => {
       '00000000-0000-4000-8000-000000000002,2026-02-21T00:00:00Z,user1,gpt-4,p2,valid2,sha256:c,{},2026,2,21'
     const compressed = await gzip(encoder.encode(csv))
 
-    mockDownloadFileWithEtag.mockResolvedValue({ body: compressed, etag: '"e1"' })
-    mockUploadFileConditional.mockResolvedValue(undefined)
+    // Entry file containing garbage rows
+    mockListFiles.mockResolvedValue(['_buffer/entries/123_abc.csv.gz'])
+    mockDownloadFile.mockResolvedValue(compressed)
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+    mockUploadFile.mockResolvedValue(undefined)
+    mockDeleteFile.mockResolvedValue(undefined)
 
     // deleteUserFromBuffer parses and rewrites — garbage row should be filtered
     const removed = await deleteUserFromBuffer(fakeBucket, 'user1')
     expect(removed).toBe(2) // only 2 valid records matched, garbage row filtered
-
-    const [, , body] = mockUploadFileConditional.mock.calls[0]
-    const resultCsv = decoder.decode(await gunzip(body))
-    expect(resultCsv).not.toContain('HTML pattern')
-    expect(resultCsv).not.toContain('garbage-not-uuid')
   })
 })
 
 describe('deleteUserFromBuffer', () => {
-  it('removes user rows from buffer CSV', async () => {
+  it('removes user rows from buffer entry files', async () => {
     const csv =
       'id,timestamp,user_id,model_id,prompt_id,output,output_hash,metadata_json,year,month,day\n' +
       '00000000-0000-4000-8000-000000000001,2026-02-21T00:00:00Z,user1,gpt-5,p1,out1,sha256:a,{},2026,2,21\n' +
@@ -460,16 +421,17 @@ describe('deleteUserFromBuffer', () => {
       '00000000-0000-4000-8000-000000000003,2026-02-21T00:00:00Z,user1,gpt-4,p2,out3,sha256:c,{},2026,2,21'
     const compressed = await gzip(encoder.encode(csv))
 
-    mockDownloadFileWithEtag.mockResolvedValue({
-      body: compressed,
-      etag: '"e1"',
-    })
-    mockUploadFileConditional.mockResolvedValue(undefined)
+    mockListFiles.mockResolvedValue(['_buffer/entries/123_abc.csv.gz'])
+    mockDownloadFile.mockResolvedValue(compressed)
+    // No legacy buffer
+    mockDownloadFileWithEtag.mockResolvedValue({ body: null, etag: null })
+    mockUploadFile.mockResolvedValue(undefined)
 
     const removed = await deleteUserFromBuffer(fakeBucket, 'user1')
 
     expect(removed).toBe(2)
-    const [, , body] = mockUploadFileConditional.mock.calls[0]
+    // Entry rewritten with only user2's record
+    const [, , body] = mockUploadFile.mock.calls[0]
     const resultCsv = decoder.decode(await gunzip(body))
     expect(resultCsv).not.toContain('user1')
     expect(resultCsv).toContain('user2')
