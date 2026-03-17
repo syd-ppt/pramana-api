@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           ACTION="${{ inputs.action || 'compact' }}"
-          MAX_ITERATIONS=10
+          MAX_ITERATIONS=50
           for i in $(seq 1 $MAX_ITERATIONS); do
             echo "--- Iteration $i/$MAX_ITERATIONS ---"
             response=$(curl -s -w "\n%{http_code}" -X POST \
