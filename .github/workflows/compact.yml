@@ -36,7 +36,7 @@ jobs:
               echo "$ACTION failed with status $http_code"
               exit 1
             fi
-            remaining=$(echo "$body" | grep -o '"entriesRemaining":[0-9]*' | grep -o '[0-9]*')
+            remaining=$(echo "$body" | grep -o '"entriesRemaining":[0-9]*' | grep -o '[0-9]*' || true)
             if [ -z "$remaining" ] || [ "$remaining" -eq 0 ]; then
               echo "No entries remaining, done."
               break
