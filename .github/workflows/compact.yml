@@ -22,15 +22,24 @@ jobs:
         run: |
           set -euo pipefail
           ACTION="${{ inputs.action || 'compact' }}"
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            "${{ vars.APP_URL }}/api/admin/${ACTION}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
-          echo "Action: $ACTION"
-          echo "Response: $body"
-          echo "HTTP Status: $http_code"
-          if [ "$http_code" -ne 200 ]; then
-            echo "$ACTION failed with status $http_code"
-            exit 1
-          fi
+          MAX_ITERATIONS=10
+          for i in $(seq 1 $MAX_ITERATIONS); do
+            echo "--- Iteration $i/$MAX_ITERATIONS ---"
+            response=$(curl -s -w "\n%{http_code}" -X POST \
+              "${{ vars.APP_URL }}/api/admin/${ACTION}" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            http_code=$(echo "$response" | tail -1)
+            body=$(echo "$response" | head -n -1)
+            echo "Response: $body"
+            echo "HTTP Status: $http_code"
+            if [ "$http_code" -ne 200 ]; then
+              echo "$ACTION failed with status $http_code"
+              exit 1
+            fi
+            remaining=$(echo "$body" | grep -o '"entriesRemaining":[0-9]*' | grep -o '[0-9]*')
+            if [ -z "$remaining" ] || [ "$remaining" -eq 0 ]; then
+              echo "No entries remaining, done."
+              break
+            fi
+            echo "$remaining entries remaining, continuing..."
+          done
