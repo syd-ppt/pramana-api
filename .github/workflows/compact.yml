@@ -23,17 +23,29 @@ jobs:
           set -euo pipefail
           ACTION="${{ inputs.action || 'compact' }}"
           MAX_ITERATIONS=50
+          MAX_RETRIES=3
           for i in $(seq 1 $MAX_ITERATIONS); do
             echo "--- Iteration $i/$MAX_ITERATIONS ---"
-            response=$(curl -s -w "\n%{http_code}" -X POST \
-              "${{ vars.APP_URL }}/api/admin/${ACTION}" \
-              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
-            http_code=$(echo "$response" | tail -1)
-            body=$(echo "$response" | head -n -1)
-            echo "Response: $body"
-            echo "HTTP Status: $http_code"
-            if [ "$http_code" -ne 200 ]; then
-              echo "$ACTION failed with status $http_code"
+            success=false
+            for retry in $(seq 1 $MAX_RETRIES); do
+              response=$(curl -s -w "\n%{http_code}" -X POST \
+                "${{ vars.APP_URL }}/api/admin/${ACTION}" \
+                -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+              http_code=$(echo "$response" | tail -1)
+              body=$(echo "$response" | head -n -1)
+              echo "Response: $body"
+              echo "HTTP Status: $http_code"
+              if [ "$http_code" -eq 200 ]; then
+                success=true
+                break
+              fi
+              if [ "$retry" -lt "$MAX_RETRIES" ]; then
+                echo "Attempt $retry failed (HTTP $http_code), retrying in $((retry * 3))s..."
+                sleep $((retry * 3))
+              fi
+            done
+            if [ "$success" != "true" ]; then
+              echo "$ACTION failed after $MAX_RETRIES attempts with status $http_code"
               exit 1
             fi
             remaining=$(echo "$body" | grep -o '"entriesRemaining":[0-9]*' | grep -o '[0-9]*' || true)
@@ -42,4 +54,5 @@ jobs:
               break
             fi
             echo "$remaining entries remaining, continuing..."
+            sleep 2
           done

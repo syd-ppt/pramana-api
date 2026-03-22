@@ -381,10 +381,12 @@ export async function writeDelta(
  * O(deltas) R2 ops — does NOT read archives.
  */
 // Workers free tier: 50 subrequests per invocation.
-// compactBuffer fixed R2 calls: 2 lists + archive read/write + entry delete
-// + legacy check + chart read/write + delta delete = ~9 fixed.
-// Variable reads (entries + deltas) share the remaining budget.
-const SUBREQUEST_BUDGET = 40  // 50 minus ~10 fixed R2 calls (with safety margin)
+// Precise per-phase accounting (no safety margin — every call is tracked):
+//   ALWAYS: 2 lists + 1 legacy check = 3
+//   ENTRY phase: archive read + archive write + batch delete = 3
+//   DELTA phase: chart read + chart write + batch delete = 3
+//   VARIABLE: 1 get per entry file + 1 get per delta file
+const SUBREQUEST_LIMIT = 50
 const MAX_DELTAS_PER_RUN = 40 // standalone cap (used by mergeDeltas when called independently)
 
 export async function mergeDeltas(
@@ -659,14 +661,28 @@ export async function rebuildUserSummaries(bucket: R2Bucket): Promise<{ users: n
 export async function compactBuffer(
   bucket: R2Bucket
 ): Promise<{ archived: number; deltasMerged: number; entriesRemaining?: number }> {
-  // 1. List both entries and deltas upfront to allocate subrequest budget precisely
+  // 1. List both entries and deltas upfront to allocate subrequest budget
   const allEntryKeys = await listFiles(bucket, BUFFER_ENTRIES_PREFIX)
   const allDeltaKeys = await listFiles(bucket, DELTAS_PREFIX)
-  // Each delta needs 1 read; mergeDeltas also needs chart read/write + delete (3 calls).
-  // When no deltas: just chart read (1 call, early return).
-  const deltaReads = Math.min(allDeltaKeys.length, SUBREQUEST_BUDGET)
-  const deltaOverhead = allDeltaKeys.length > 0 ? deltaReads + 3 : 1
-  const maxEntries = Math.max(1, SUBREQUEST_BUDGET - deltaOverhead)
+
+  // Entries-first dynamic allocation — archiving is the primary goal
+  const ALWAYS_FIXED = 3  // 2 lists above + 1 legacy buffer check below
+  const PHASE_FIXED = 3   // per active phase: read + write + batch delete
+  let available = SUBREQUEST_LIMIT - ALWAYS_FIXED  // 47
+
+  let maxEntries = 0
+  if (allEntryKeys.length > 0) {
+    available -= PHASE_FIXED  // reserve archive read/write/delete
+    maxEntries = Math.min(allEntryKeys.length, available)
+    available -= maxEntries
+  }
+
+  let maxDeltaReads = 0
+  if (allDeltaKeys.length > 0 && available > PHASE_FIXED) {
+    available -= PHASE_FIXED  // reserve chart read/write/delete
+    maxDeltaReads = Math.min(allDeltaKeys.length, available)
+  }
+
   const entryKeys = allEntryKeys.slice(0, maxEntries)
   let archived = 0
 
@@ -723,9 +739,11 @@ export async function compactBuffer(
     await deleteFile(bucket, BUFFER_KEY)
   }
 
-  // 2. Merge deltas into chart — pass pre-listed keys to save 1 subrequest
-  const deltaBudget = Math.max(1, SUBREQUEST_BUDGET - entryKeys.length)
-  const { merged } = await mergeDeltas(bucket, deltaBudget, allDeltaKeys)
+  // 2. Merge deltas only if budget allows — skip to avoid wasting chart read/write subrequests
+  let merged = 0
+  if (maxDeltaReads > 0) {
+    ;({ merged } = await mergeDeltas(bucket, maxDeltaReads, allDeltaKeys))
+  }
 
   const entriesRemaining = allEntryKeys.length > entryKeys.length
     ? allEntryKeys.length - entryKeys.length
