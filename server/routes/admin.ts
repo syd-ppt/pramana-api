@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { compactBuffer, rebuildChartJson, rebuildUserSummaries } from '../lib/buffer'
+import { compactBuffer, rebuildChartJsonIncremental } from '../lib/buffer'
 
 type Env = { Bindings: { PRAMANA_DATA: R2Bucket; CRON_SECRET: string } }
 
@@ -30,10 +30,8 @@ export const adminRoutes = new Hono<Env>()
     if (denied) return denied
 
     try {
-      const bucket = c.env.PRAMANA_DATA
-      await rebuildChartJson(bucket)
-      const userResult = await rebuildUserSummaries(bucket)
-      return c.json({ status: 'completed', rebuilt: true, ...userResult })
+      const result = await rebuildChartJsonIncremental(c.env.PRAMANA_DATA)
+      return c.json({ status: result.done ? 'completed' : 'in_progress', ...result })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       const stack = err instanceof Error ? err.stack : undefined

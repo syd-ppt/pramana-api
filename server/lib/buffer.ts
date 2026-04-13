@@ -656,6 +656,161 @@ export async function rebuildUserSummaries(bucket: R2Bucket): Promise<{ users: n
   return { users: byUser.size, diagnostics }
 }
 
+// -- Incremental rebuild (cursor-based, Workers 50-subrequest safe) --
+
+const REBUILD_CURSOR_KEY = '_rebuild/cursor.json'
+
+interface RebuildCursor {
+  processedArchives: string[]
+}
+
+/**
+ * Rebuild chart_data.json from archives in batches of up to 45 per Worker invocation.
+ * Persists progress in _rebuild/cursor.json so the GitHub Actions loop can resume.
+ * Always starts from an empty chart (full recompute, not additive on top of delta state).
+ */
+export async function rebuildChartJsonIncremental(
+  bucket: R2Bucket
+): Promise<{ archivesProcessed: number; archivesRemaining: number; done: boolean }> {
+  // Subrequest budget per invocation (50 limit):
+  //   cursor read + archive list + chart read (skipped first batch) + chart write + cursor write/delete = 5 fixed
+  //   Remaining 45 → archive reads
+  const MAX_ARCHIVES = SUBREQUEST_LIMIT - 5  // 45
+
+  // 1. Read cursor
+  const { body: cursorBody } = await downloadFileWithEtag(bucket, REBUILD_CURSOR_KEY)
+  const cursor: RebuildCursor = cursorBody
+    ? (JSON.parse(decoder.decode(cursorBody)) as RebuildCursor)
+    : { processedArchives: [] }
+
+  // 2. List all archive keys — sorted = chronological (YYYY-MM-DD prefix)
+  const allArchiveKeys = (await listFiles(bucket, ARCHIVE_PREFIX))
+    .filter(k => k.endsWith('.csv.gz'))
+    .sort()
+
+  // 3. Diff against cursor
+  const processedSet = new Set(cursor.processedArchives)
+  const pending = allArchiveKeys.filter(k => !processedSet.has(k))
+
+  // No archives exist and no prior progress
+  if (pending.length === 0 && cursor.processedArchives.length === 0) {
+    return { archivesProcessed: 0, archivesRemaining: 0, done: true }
+  }
+
+  // All archives already processed in prior batches — finalize
+  if (pending.length === 0) {
+    await deleteFile(bucket, REBUILD_CURSOR_KEY)
+    return { archivesProcessed: 0, archivesRemaining: 0, done: true }
+  }
+
+  // 4. Load chart — empty on first batch, existing on resume
+  let chart: ChartJson
+  if (cursor.processedArchives.length === 0) {
+    chart = {
+      version: 5,
+      data: {},
+      models: [],
+      total_submissions: 0,
+      total_contributors: 0,
+      last_updated: new Date().toISOString(),
+      _prev_hashes: {},
+      _known_users: [],
+    }
+  } else {
+    chart = await readChartJson(bucket)
+  }
+
+  // 5. Process batch
+  const batch = pending.slice(0, MAX_ARCHIVES)
+  const modelSet = new Set(chart.models)
+  const knownUsers = new Set(chart._known_users)
+  const prevHashMap = new Map(Object.entries(chart._prev_hashes))
+
+  for (const archiveKey of batch) {
+    const buf = await downloadFile(bucket, archiveKey)
+    const csv = decoder.decode(await gunzip(buf))
+    const records = parseCsvBody(csv)
+
+    // Sort chronologically within archive for correct drift tracking
+    records.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+    // Group by (hourly bucket, model)
+    const grouped = new Map<string, Map<string, StorageRecord[]>>()
+    for (const r of records) {
+      const dateStr = `${r.year}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`
+      const hour = r.timestamp.length >= 13 ? r.timestamp.slice(11, 13) : '00'
+      const bucketKey = `${dateStr}-${hour}`
+      if (!grouped.has(bucketKey)) grouped.set(bucketKey, new Map())
+      const byModel = grouped.get(bucketKey)!
+      if (!byModel.has(r.model_id)) byModel.set(r.model_id, [])
+      byModel.get(r.model_id)!.push(r)
+      modelSet.add(r.model_id)
+      knownUsers.add(r.user_id)
+    }
+
+    // Compute stats per (bucket, model) in chronological order
+    for (const bucketKey of Array.from(grouped.keys()).sort()) {
+      if (!chart.data[bucketKey]) chart.data[bucketKey] = {}
+      const byModel = grouped.get(bucketKey)!
+
+      for (const [model, recs] of byModel) {
+        const promptIds = new Set<string>()
+        const outputHashes = new Set<string>()
+        const promptLatestHash = new Map<string, string>()
+
+        for (const r of recs) {
+          promptIds.add(r.prompt_id)
+          outputHashes.add(r.output_hash)
+          promptLatestHash.set(r.prompt_id, r.output_hash)
+        }
+
+        let drifted = 0
+        for (const [prompt, hash] of promptLatestHash) {
+          const hashKey = `${model}|${prompt}`
+          const prev = prevHashMap.get(hashKey)
+          if (prev !== undefined && prev !== hash) drifted++
+          prevHashMap.set(hashKey, hash)
+        }
+
+        // Upsert — each archive covers a distinct calendar day so hourly buckets never overlap
+        const existing = chart.data[bucketKey][model] ?? {
+          submissions: 0, prompts_tested: 0, unique_outputs: 0, drifted_prompts: 0,
+        }
+        chart.data[bucketKey][model] = {
+          submissions: existing.submissions + recs.length,
+          prompts_tested: existing.prompts_tested + promptIds.size,
+          unique_outputs: existing.unique_outputs + outputHashes.size,
+          drifted_prompts: existing.drifted_prompts + drifted,
+        }
+        chart.total_submissions += recs.length
+      }
+    }
+  }
+
+  chart.models = Array.from(modelSet).sort()
+  chart._known_users = Array.from(knownUsers)
+  chart.total_contributors = knownUsers.size
+  chart._prev_hashes = Object.fromEntries(prevHashMap)
+  chart.last_updated = new Date().toISOString()
+
+  const newProcessed = [...cursor.processedArchives, ...batch]
+  const archivesRemaining = pending.length - batch.length
+  const isDone = archivesRemaining === 0
+
+  // 6. Write chart
+  await uploadFile(bucket, CHART_KEY, encoder.encode(JSON.stringify(chart)))
+
+  // 7. Advance or delete cursor
+  if (isDone) {
+    await deleteFile(bucket, REBUILD_CURSOR_KEY)
+  } else {
+    const newCursor: RebuildCursor = { processedArchives: newProcessed }
+    await uploadFile(bucket, REBUILD_CURSOR_KEY, encoder.encode(JSON.stringify(newCursor)))
+  }
+
+  return { archivesProcessed: batch.length, archivesRemaining, done: isDone }
+}
+
 // -- Compact (cron) --
 
 export async function compactBuffer(
